@@ -7,8 +7,8 @@ echo.
 set "LQ_SCRIPT_DIR=%~dp0"
 set "LQ_ZIP_PATH=%~1"
 
-:: PS1 파일을 명시적 UTF-8 로 읽어 실행
-:: (PowerShell 5.1 은 BOM 없는 UTF-8 파일을 ANSI 로 읽는 버그 회피)
-PowerShell -ExecutionPolicy Bypass -NoProfile -Command "$d=$env:LQ_SCRIPT_DIR; $z=$env:LQ_ZIP_PATH; $f=Join-Path $d 'update.ps1'; $c=[IO.File]::ReadAllText($f,[Text.Encoding]::UTF8); &([scriptblock]::Create($c)) -ZipPath $z -ScriptDir ($d.TrimEnd('\'))"
+:: PS1 파일을 UTF-8 로 읽어 UTF-8 BOM 붙인 임시파일로 실행
+:: (PS5.1 은 BOM 없는 UTF-8 을 ANSI 로 읽는 버그 => BOM 추가로 우회)
+PowerShell -ExecutionPolicy Bypass -NoProfile -Command "$src=Join-Path $env:LQ_SCRIPT_DIR 'update.ps1'; $tmp=[IO.Path]::GetTempFileName()+'.ps1'; $c=[IO.File]::ReadAllText($src,[Text.Encoding]::UTF8); [IO.File]::WriteAllText($tmp,$c,[System.Text.UTF8Encoding]::new($true)); try{& $tmp -ZipPath $env:LQ_ZIP_PATH -ScriptDir ($env:LQ_SCRIPT_DIR.TrimEnd('\'))}finally{Remove-Item $tmp -EA 0}"
 
 pause

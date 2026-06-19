@@ -1,13 +1,13 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    LQ All In One — GitHub ZIP 자동 업데이트 스크립트
+    LQ All In One - GitHub ZIP 자동 업데이트 스크립트
 .DESCRIPTION
     GitHub 에서 다운로드한 ZIP 파일과 로컬 프로젝트를 비교하여
     변경된 파일만 대치합니다. 로컬 전용 파일(.env 등)은 삭제하지 않습니다.
 .HOW TO USE
     방법 1) ZIP 파일을 update.bat 아이콘 위에 드래그 앤 드랍
-    방법 2) update.bat 를 더블클릭 → Downloads 폴더에서 자동 탐색
+    방법 2) update.bat 를 더블클릭 -> Downloads 폴더에서 자동 탐색
 #>
 param(
     # 드래그 앤 드랍으로 전달되는 ZIP 파일 경로 (비어 있으면 Downloads 자동 탐색)
@@ -74,7 +74,7 @@ Write-Host ""
 # ZIP 파일 결정 (드래그 앤 드랍 우선, 없으면 Downloads 탐색)
 # ══════════════════════════════════════════════════
 if ($ZipPath) {
-    # ── 드래그 앤 드랍으로 파일이 지정된 경우 ──
+    # -- 드래그 앤 드랍으로 파일이 지정된 경우 --
     if (-not (Test-Path $ZipPath)) {
         Write-Host "오류: 파일을 찾을 수 없습니다." -ForegroundColor Red
         Write-Host "  경로: $ZipPath" -ForegroundColor DarkGray
@@ -88,7 +88,7 @@ if ($ZipPath) {
     $zip = Get-Item $ZipPath
     Write-Host "모드          : 드래그 앤 드랍" -ForegroundColor Cyan
 } else {
-    # ── 직접 실행 — Downloads 폴더에서 자동 탐색 ──
+    # -- 직접 실행 - Downloads 폴더에서 자동 탐색 --
     Write-Host "모드          : 자동 탐색 (Downloads)" -ForegroundColor DarkGray
 
     $zips = @(Get-ChildItem "$DOWNLOADS\$ZIP_PATTERN" -ErrorAction SilentlyContinue |
@@ -100,7 +100,7 @@ if ($ZipPath) {
         Write-Host ""
         Write-Host "사용 방법:" -ForegroundColor Yellow
         Write-Host "  방법 1) ZIP 파일을 update.bat 아이콘 위에 드래그 앤 드랍"
-        Write-Host "  방법 2) GitHub → Code → Download ZIP 후 update.bat 실행"
+        Write-Host "  방법 2) GitHub > Code > Download ZIP 후 update.bat 실행"
         Write-Host "          (파일명 예시: LQ_Dashboard-main.zip)"
         Write-Host ""
         exit 1
@@ -109,9 +109,9 @@ if ($ZipPath) {
     $zip = $zips[0]
 
     if ($zips.Count -gt 1) {
-        Write-Host "ZIP 파일 $($zips.Count)개 발견 — 가장 최신 파일 사용:" -ForegroundColor Yellow
+        Write-Host "ZIP 파일 $($zips.Count)개 발견 - 가장 최신 파일 사용:" -ForegroundColor Yellow
         foreach ($z in $zips) {
-            $marker = if ($z.FullName -eq $zip.FullName) { "▶ " } else { "   " }
+            $marker = if ($z.FullName -eq $zip.FullName) { "> " } else { "  " }
             $suffix = if ($z.FullName -eq $zip.FullName) { "" } else { " (건너뜀)" }
             Write-Host "  $marker$($z.Name)$suffix"
         }
@@ -131,7 +131,7 @@ try {
     Expand-Archive -Path $zip.FullName -DestinationPath $TEMP_DIR -Force
 } catch {
     Write-Host ""
-    Write-Host "오류: ZIP 파일 압축 해제에 실패했습니다 — $_" -ForegroundColor Red
+    Write-Host "오류: ZIP 파일 압축 해제에 실패했습니다 - $_" -ForegroundColor Red
     Write-Host "ZIP 파일이 완전히 다운로드되었는지 확인하세요." -ForegroundColor Yellow
     exit 1
 }
@@ -182,7 +182,7 @@ Get-ChildItem $SRC -Recurse -File | ForEach-Object {
         Write-Host "[신규]      $rel" -ForegroundColor Cyan
 
     } else {
-        # 기존 파일 — MD5 비교
+        # 기존 파일 - MD5 비교
         $src_hash  = Get-MD5 $_.FullName
         $dest_hash = Get-MD5 $dest
 
@@ -197,7 +197,7 @@ Get-ChildItem $SRC -Recurse -File | ForEach-Object {
     }
 }
 
-# 로컬 전용 파일 수 집계 (삭제하지 않음 — 정보용)
+# 로컬 전용 파일 수 집계 (삭제하지 않음 - 정보용)
 $local_only = 0
 Get-ChildItem $TARGET -Recurse -File | ForEach-Object {
     $rel = $_.FullName.Substring($TARGET.Length).TrimStart('\', '/')
