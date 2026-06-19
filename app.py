@@ -107,10 +107,6 @@ PROCESS_SUBMENUS = [
     ("proc_4", "전장 결선 자재 현황",    "🔌"),
 ]
 
-MGMT_SUBMENUS = [
-    ("data_upload", "압축파일 업데이트", "📦"),
-]
-
 SIDEBAR_PAGES = {"proc_2", "proc_3", "proc_4", "kpi_1", "kpi_2", "kpi_4", "kpi_5", "kpi_6", "kpi_7"}
 
 # ══════════════════════════════════════════════════════════
@@ -1127,13 +1123,11 @@ page_home_obj = st.Page(render_home, title="홈", url_path="home", default=True)
 
 kpi_page_objs  = [st.Page(make_kpi_page_func(k, n, i),  title=n, url_path=k) for k, n, i in KPI_SUBMENUS]
 proc_page_objs = [st.Page(make_proc_page_func(k, n, i), title=n, url_path=k) for k, n, i in PROCESS_SUBMENUS]
-mgmt_page_objs = [st.Page(make_proc_page_func(k, n, i), title=n, url_path=k) for k, n, i in MGMT_SUBMENUS]
 
 pages = {
     "메인": [page_home_obj],
     "KPI 상세": kpi_page_objs,
     "공정 관리 상세": proc_page_objs,
-    "데이터 관리": mgmt_page_objs,
 }
 
 pg = st.navigation(pages, position="sidebar")
