@@ -48,7 +48,7 @@ body {
   background: #0d1f3c;
   border: 1px solid rgba(56,189,248,0.2);
   border-radius: 8px;
-  max-height: 520px;
+  max-height: 640px;
 }
 
 /* 드래그 중 새 위치 프리뷰 오버레이 */
@@ -83,7 +83,7 @@ body {
 .excel-gantt th, .excel-gantt td {
   border: 1px solid rgba(56,189,248,0.12);
   padding: 0; text-align: center; vertical-align: middle;
-  height: 22px; min-width: 26px; max-width: 26px;
+  height: 19px; min-width: 24px; max-width: 24px;
   overflow: hidden; white-space: nowrap;
 }
 .excel-gantt .area-cell {
@@ -101,8 +101,8 @@ body {
 }
 .excel-gantt thead th.area-cell { z-index: 10; background: #0a1628; }
 .excel-gantt thead tr:nth-child(1) th { top: 0; }
-.excel-gantt thead tr:nth-child(2) th { top: 24px; }
-.excel-gantt thead tr:nth-child(3) th { top: 48px; }
+.excel-gantt thead tr:nth-child(2) th { top: 21px; }
+.excel-gantt thead tr:nth-child(3) th { top: 42px; }
 
 .excel-gantt td.saturday, .excel-gantt th.saturday {
   background: rgba(253,224,71,0.12) !important;
@@ -128,6 +128,10 @@ body {
 .excel-gantt td.bar:hover::before { left: 1px; }
 .excel-gantt td.bar:hover::after  { right: 1px; }
 .excel-gantt td.bar.dragging { opacity: 0.5; outline: 2px dashed #fbbf24 !important; }
+
+/* 선내/선외 구분 좌측 색상 바 (내외구분 컬럼 값 기반) */
+.excel-gantt td.bar.bar-inside  { border-left: 3px solid #3b82f6 !important; }
+.excel-gantt td.bar.bar-outside { border-left: 3px solid #f97316 !important; }
 
 /* ── 막대 색상은 JavaScript에서 동적 배정 (공종=톤, 작업내용=개별 색) ── */
 
@@ -270,6 +274,13 @@ function renderLegend(gjHueMap) {
     </span>`;
   });
   html += '<span style="font-size:0.73rem;color:#475569;margin:0 0.5rem;flex-shrink:0;">— 작업내용별 자동 구분</span>';
+  // 선내/선외 데이터가 있으면 범례에 추가
+  const hasInOut = ganttData.some(t => (t.inOut || '').trim());
+  if (hasInOut) {
+    html += '<span style="margin-left:0.8rem;font-size:0.78rem;color:#64748b;flex-shrink:0;">내/외 ▶</span>';
+    html += '<span class="legend-item"><span class="legend-box" style="border-left:3px solid #3b82f6;background:rgba(59,130,246,0.2);"></span>선내</span>';
+    html += '<span class="legend-item"><span class="legend-box" style="border-left:3px solid #f97316;background:rgba(249,115,22,0.2);"></span>선외</span>';
+  }
   el.innerHTML = html + staticSuffix;
 }
 
@@ -490,11 +501,32 @@ function render() {
         const labelText = ROW_MODE === 'ship'
           ? `${task.task} / ${task.area}`
           : task.task;
-        const label = `<span style="font-size:${labelSize};">${labelText}</span>`;
+
+        // 선내/선외 구분 클래스 및 배지
+        const io = (task.inOut || '').trim();
+        const ioClass = io === '내' || io === '선내' || io === 'I' ? ' bar-inside'
+                      : io === '외' || io === '선외' || io === 'O' ? ' bar-outside' : '';
+        const ioBadge = io && ioClass && span >= 2
+          ? `<span style="background:rgba(0,0,0,0.2);padding:0 2px;border-radius:2px;font-size:7.5px;margin-right:2px;">${io}</span>`
+          : '';
+        // 담당자 — bar 너비 충분할 때만 표시
+        const mgr = (task.manager || '').trim();
+        const mgrSuffix = mgr && span >= 6 ? ` · ${mgr}` : '';
+
+        const label = `<span style="font-size:${labelSize};">${ioBadge}${labelText}${mgrSuffix}</span>`;
+
+        // 툴팁 — 선내/외, 담당자, 진행상태 추가
+        const extraLines = [
+          io                        ? `내/외: ${io}`         : '',
+          mgr                       ? `담당: ${mgr}`         : '',
+          (task.status || '').trim() ? `진행: ${task.status}` : '',
+        ].filter(Boolean).join('\n');
+        const baseInfo = `${task.proj} · ${task.area} · ${task.gj} · ${task.task}\n${task.s} ~ ${task.e}`;
         const title = IS_EDITABLE
-          ? `${task.proj} · ${task.area} · ${task.gj} · ${task.task}\n${task.s} ~ ${task.e}`
-          : `🔒 편집 권한 없음\n${task.proj} · ${task.area} · ${task.gj} · ${task.task}\n${task.s} ~ ${task.e}`;
-        html += `<td class="bar" colspan="${span}" style="background:${barColor};"
+          ? `${baseInfo}${extraLines ? '\n' + extraLines : ''}`
+          : `🔒 편집 권한 없음\n${baseInfo}${extraLines ? '\n' + extraLines : ''}`;
+
+        html += `<td class="bar${ioClass}" colspan="${span}" style="background:${barColor};"
                    data-task-id="${task.id}" data-start="${task.s}"
                    data-end="${task.e}" data-area="${task.area}"
                    title="${title}">${label}</td>`;

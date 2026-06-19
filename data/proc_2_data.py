@@ -86,6 +86,10 @@ def load_data() -> pd.DataFrame:
     # 간트 표시여부 컬럼이 있으면 보존 (Y 만 화면/인쇄에 출력)
     if '표시여부' in df.columns:
         required_cols.append('표시여부')
+    # 간트 시각화 보조 컬럼 (있으면 포함 — 없으면 조용히 생략)
+    for col in ['내외구분', '담당자', '진행상태']:
+        if col in df.columns:
+            required_cols.append(col)
 
     existing_cols = [col for col in required_cols if col in df.columns]
     df = df[existing_cols]
@@ -334,6 +338,9 @@ def get_gantt_data(filtered_df: pd.DataFrame, basis: str = "변경 계획") -> l
             'e':        row[e_col].strftime('%Y-%m-%d'),
             'stg':      str(row.get('STG', '')),
             'shipType': str(row.get('선종', '')),
+            'inOut':    str(row.get('내외구분', '') or '').strip(),
+            'manager':  str(row.get('담당자',   '') or '').strip(),
+            'status':   str(row.get('진행상태', '') or '').strip(),
         })
     return tasks
 
