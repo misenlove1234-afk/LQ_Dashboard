@@ -11,7 +11,9 @@
 #>
 param(
     # 드래그 앤 드랍으로 전달되는 ZIP 파일 경로 (비어 있으면 Downloads 자동 탐색)
-    [string]$ZipPath = ""
+    [string]$ZipPath = "",
+    # update.bat 에서 전달되는 스크립트 폴더 경로 (-Command 방식은 $PSScriptRoot 가 비어 있음)
+    [string]$ScriptDir = ""
 )
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -54,18 +56,18 @@ function Get-MD5([string]$path) {
     return (Get-FileHash $path -Algorithm MD5).Hash
 }
 
-function Write-Sep { Write-Host ("─" * 42) -ForegroundColor DarkGray }
+function Write-Sep { Write-Host ("-" * 42) -ForegroundColor DarkGray }
 
 # ══════════════════════════════════════════════════
 # 헤더
 # ══════════════════════════════════════════════════
-$TARGET    = $PSScriptRoot
+$TARGET    = if ($ScriptDir) { $ScriptDir } else { $PSScriptRoot }
 $DOWNLOADS = "$env:USERPROFILE\Downloads"
 
 Write-Host ""
-Write-Host ("═" * 42) -ForegroundColor Cyan
-Write-Host "   LQ All In One — 자동 업데이트" -ForegroundColor Cyan
-Write-Host ("═" * 42) -ForegroundColor Cyan
+Write-Host ("=" * 42) -ForegroundColor Cyan
+Write-Host "   LQ All In One - 자동 업데이트" -ForegroundColor Cyan
+Write-Host ("=" * 42) -ForegroundColor Cyan
 Write-Host ""
 
 # ══════════════════════════════════════════════════

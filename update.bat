@@ -1,13 +1,14 @@
 @echo off
 chcp 65001 > nul
-title LQ All In One — 자동 업데이트
+title LQ All In One - Update
 echo.
 
-if "%~1"=="" (
-    :: 직접 실행 — Downloads 폴더에서 ZIP 자동 탐색
-    PowerShell -ExecutionPolicy Bypass -NoProfile -File "%~dp0update.ps1"
-) else (
-    :: ZIP 파일을 드래그 앤 드랍으로 전달
-    PowerShell -ExecutionPolicy Bypass -NoProfile -File "%~dp0update.ps1" -ZipPath "%~1"
-)
+:: 스크립트 폴더와 드래그된 ZIP 경로를 환경변수로 전달 (공백 경로 안전)
+set "LQ_SCRIPT_DIR=%~dp0"
+set "LQ_ZIP_PATH=%~1"
+
+:: PS1 파일을 명시적 UTF-8 로 읽어 실행
+:: (PowerShell 5.1 은 BOM 없는 UTF-8 파일을 ANSI 로 읽는 버그 회피)
+PowerShell -ExecutionPolicy Bypass -NoProfile -Command "$d=$env:LQ_SCRIPT_DIR; $z=$env:LQ_ZIP_PATH; $f=Join-Path $d 'update.ps1'; $c=[IO.File]::ReadAllText($f,[Text.Encoding]::UTF8); &([scriptblock]::Create($c)) -ZipPath $z -ScriptDir ($d.TrimEnd('\'))"
+
 pause
