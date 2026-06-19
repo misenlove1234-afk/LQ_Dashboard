@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>간트 인쇄</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: "Malgun Gothic", "맑은 고딕", -apple-system, sans-serif;
+  background: #0a1628;
+  color: #e2e8f0;
+  padding: 10px;
+}
+
+/* 인쇄 버튼 툴바 (인쇄 시 숨김) */
+.toolbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: rgba(56,189,248,0.08);
+  padding: 10px 14px; border-radius: 6px; margin-bottom: 12px;
+  position: sticky; top: 0; z-index: 10;
+}
+.toolbar button {
+  background: #38BDF8; color: #0a1628; font-weight: 700;
+  border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer;
+  font-size: 14px; font-family: inherit;
+}
+.toolbar button:hover { background: #7dd3fc; }
+.toolbar .tip { color: #94a3b8; font-size: 12px; }
+.toolbar .tip b { color: #e2e8f0; }
+
+/* 섹션 컨테이너 */
+.section {
+  background: #0d1f3c;
+  border: 1px solid rgba(56,189,248,0.2);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 18px;
+}
+.section-title {
+  color: #e2e8f0; font-weight: 700; font-size: 15px;
+  margin-bottom: 8px; padding: 6px 10px;
+  background: rgba(56,189,248,0.1); border-left: 3px solid #38BDF8;
+}
+.section .empty { padding: 40px; text-align: center; color: #94a3b8; }
+
+.gantt-wrap {
+  overflow-x: auto; overflow-y: visible;
+  background: #0d1f3c;
+  border: 1px solid rgba(56,189,248,0.15);
+  border-radius: 6px;
+}
+
+.excel-gantt {
+  border-collapse: collapse;
+  font-family: 'Malgun Gothic', monospace;
+  font-size: 10.5px;
+  color: #e2e8f0;
+  background: #0d1f3c;
+  table-layout: fixed;
+}
+.excel-gantt th, .excel-gantt td {
+  border: 1px solid rgba(56,189,248,0.12);
+  padding: 0; text-align: center; vertical-align: middle;
+  height: 22px; min-width: 26px; max-width: 26px;
+  overflow: hidden; white-space: nowrap;
+}
+.excel-gantt .area-cell {
+  background: #0a1628; color: #7dd3fc; font-weight: 600;
+  text-align: center; padding: 4px 6px;
+  min-width: 90px; max-width: 90px;
+  border-right: 2px solid rgba(56,189,248,0.3);
+  font-size: 11px;
+}
+.excel-gantt thead th {
+  background: #0f2847; color: #e2e8f0;
+  font-weight: 600; font-size: 10px; padding: 3px 0;
+}
+.excel-gantt thead th.area-cell { background: #0a1628; }
+
+.excel-gantt td.saturday, .excel-gantt th.saturday {
+  background: rgba(253,224,71,0.12) !important;
+}
+.excel-gantt td.today, .excel-gantt th.today {
+  background: rgba(244,63,94,0.18) !important;
+  color: #fca5a5; font-weight: 700;
+}
+
+.excel-gantt td.bar {
+  color: #0a1628 !important; font-weight: 600;
+  padding: 0 6px; font-size: 10.5px;
+  border: 1px solid rgba(0,0,0,0.2);
+  text-overflow: ellipsis;
+}
+
+/* 섹션마다 페이지 분할 (인쇄) */
+.section { page-break-after: always; break-after: page; }
+.section:last-child { page-break-after: auto; break-after: auto; }
+
+/* 인쇄용 스타일 — 흰 배경 */
+@media print {
+  @page { size: A3 landscape; margin: 8mm; }
+  html, body { background: #ffffff !important; color: #1f2937 !important; }
+  body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
+  .no-print { display: none !important; }
+
+  .section { background: #ffffff !important; border: none; padding: 4mm; margin-bottom: 0; box-shadow: none; }
+  .section-title {
+    background: #f1f5f9 !important; color: #0f172a !important;
+    border-left: 3px solid #0ea5e9 !important;
+  }
+
+  .gantt-wrap { overflow: visible !important; background: #ffffff !important; border: 1px solid #cbd5e1 !important; }
+
+  .excel-gantt { background: #ffffff !important; color: #1f2937 !important; }
+  .excel-gantt th, .excel-gantt td { border-color: #d1d5db !important; }
+
+  .excel-gantt .area-cell {
+    background: #f8fafc !important; color: #0f172a !important;
+    border-right-color: #94a3b8 !important;
+  }
+  .excel-gantt .area-cell div[style*="color:#94a3b8"],
+  .excel-gantt .area-cell div { color: #475569 !important; }
+
+  .excel-gantt thead th { background: #e2e8f0 !important; color: #0f172a !important; }
+  .excel-gantt thead th.area-cell { background: #f8fafc !important; }
+  /* 월 헤더 인라인 style(#1e3a5f) 오버라이드 */
+  .excel-gantt thead th[style*="background:#1e3a5f"],
+  .excel-gantt thead th[colspan] {
+    background: #cbd5e1 !important; color: #0f172a !important;
+  }
+
+  .excel-gantt td.saturday, .excel-gantt th.saturday {
+    background: #fef3c7 !important;
+  }
+  .excel-gantt td.today, .excel-gantt th.today {
+    background: #fecaca !important; color: #991b1b !important;
+  }
+
+  /* 막대는 기존 컬러 유지 (hsl), 텍스트는 가독성 위해 진하게 */
+  .excel-gantt td.bar { color: #0a1628 !important; border-color: rgba(0,0,0,0.25) !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="toolbar no-print">
+  <button onclick="window.print()">🖨 브라우저 인쇄 (PDF로 저장)</button>
+  <span class="tip">
+    💡 인쇄 대화상자에서 <b>'배경 그래픽'</b> 활성화, 용지: <b>A3 가로</b> 권장.
+    <b>대상: PDF로 저장</b> 선택 시 파일로 다운로드됩니다.
+  </span>
+</div>
+
+<div id="sections-root"></div>
+
+<script>
+const SECTIONS = /*__SECTIONS__*/[];
+const TODAY = '__TODAY__';
+const ROW_MODE = '__ROW_MODE__';
+const WEEKDAYS = ['일','월','화','수','목','금','토'];
+
+// ── 공종 hue (gantt_editor.html과 동일 규칙) ─────────────
+function assignGjHues(tasks) {
+  const seen = new Set(), gjList = [];
+  tasks.forEach(t => { if (t.gj && !seen.has(t.gj)) { gjList.push(t.gj); seen.add(t.gj); } });
+  const m = {};
+  gjList.forEach((gj, i) => { m[gj] = Math.round((200 + i * 137.5) % 360); });
+  return m;
+}
+function paletteColor(hue, idx) {
+  const V = [[72,63],[84,57],[62,70],[88,54],[68,67],[78,60]];
+  const [s, l] = V[idx % V.length];
+  return `hsl(${hue},${s}%,${l}%)`;
+}
+function buildColorMap(tasks, hueMap) {
+  const map = {}, idx = {};
+  tasks.forEach(t => {
+    if (!map[t.task]) {
+      const h = hueMap[t.gj] ?? 0;
+      const i = idx[t.gj] ?? 0;
+      map[t.task] = paletteColor(h, i);
+      idx[t.gj] = i + 1;
+    }
+  });
+  return map;
+}
+
+// ── 구역 정렬 (gantt_editor.html과 동일) ────────────────
+function sortAreas(areas) {
+  const SIDE = {'P':0,'C':1,'S':2};
+  const cat = n => {
+    if (n === 'NAV-DK') return 0;
+    if (n === 'UPP-DK') return 2;
+    if (n.endsWith('-DK')) return 1;
+    if (/^M\d+/.test(n)) return 3;
+    return 4;
+  };
+  const parseM = n => { const m = n.match(/^M(\d+)([A-Z]?)/); return m ? [parseInt(m[1],10), m[2]||''] : [99999,'']; };
+  return [...areas].sort((a,b) => {
+    const ca = cat(a), cb = cat(b);
+    if (ca !== cb) return ca - cb;
+    if (ca === 1) return b.charCodeAt(0) - a.charCodeAt(0);
+    if (ca === 3) {
+      const [nA,sA] = parseM(a), [nB,sB] = parseM(b);
+      if (nA !== nB) return nA - nB;
+      return (SIDE[sA]??9) - (SIDE[sB]??9);
+    }
+    return a.localeCompare(b);
+  });
+}
+
+// ── 섹션 1개 렌더 ───────────────────────────────────────
+function renderSection(section) {
+  const { ship, stg, tasks } = section;
+  const wrap = document.createElement('div');
+  wrap.className = 'section';
+
+  const title = document.createElement('div');
+  title.className = 'section-title';
+  title.textContent = `${ship}  |  ${stg}`;
+  wrap.appendChild(title);
+
+  if (!tasks || tasks.length === 0) {
+    const e = document.createElement('div');
+    e.className = 'empty';
+    e.textContent = '표시할 작업이 없습니다.';
+    wrap.appendChild(e);
+    return wrap;
+  }
+
+  const hueMap = assignGjHues(tasks);
+  const colorMap = buildColorMap(tasks, hueMap);
+
+  const groupKey = ROW_MODE === 'ship' ? 'proj' : 'area';
+  const groupHdr = ROW_MODE === 'ship' ? '호선' : '구역 / 호선';
+  const groupsInData = [...new Set(tasks.map(t => t[groupKey]))];
+  const groups = ROW_MODE === 'ship'
+    ? groupsInData.sort((a,b) => String(a).localeCompare(String(b)))
+    : sortAreas(groupsInData);
+
+  // 날짜 범위 (일요일 제외) — 로컬 자정 기준 (timezone-safe)
+  const _parseLocalDate = (s) => {
+    const [y, m, d] = String(s).split('-').map(Number);
+    return new Date(y, m - 1, d);
+  };
+  const _dateKey = (d) => {
+    const y  = d.getFullYear();
+    const m  = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  };
+  const allS = tasks.map(t => _parseLocalDate(t.s).getTime());
+  const allE = tasks.map(t => _parseLocalDate(t.e).getTime());
+  const minStart = new Date(Math.min(...allS));
+  const maxEnd   = new Date(Math.max(...allE));
+  const startCur = new Date(minStart.getFullYear(), minStart.getMonth(), minStart.getDate() - 3);
+  const endCur   = new Date(maxEnd.getFullYear(),   maxEnd.getMonth(),   maxEnd.getDate()   + 3);
+  const dates = [];
+  for (let cur = new Date(startCur); cur.getTime() <= endCur.getTime();
+       cur.setDate(cur.getDate() + 1)) {
+    if (cur.getDay() === 0) continue;
+    dates.push(new Date(cur.getTime()));
+  }
+  const dateIndex = {};
+  dates.forEach((d,i) => { dateIndex[_dateKey(d)] = i; });
+
+  // 그룹별 레인
+  const groupLanes = {};
+  groups.forEach(g => {
+    const gt = tasks.filter(t => t[groupKey] === g);
+    gt.sort((x,y) => _parseLocalDate(x.s) - _parseLocalDate(y.s));
+    const lanes = [];
+    gt.forEach(task => {
+      let placed = false;
+      for (const lane of lanes) {
+        let laneMaxEndTs = -Infinity;
+        for (const t of lane) {
+          const ts = _parseLocalDate(t.e).getTime();
+          if (ts > laneMaxEndTs) laneMaxEndTs = ts;
+        }
+        // 종료일 == 시작일 이어도 같은 컬럼을 공유할 수 없으므로 strict (>)
+        if (_parseLocalDate(task.s).getTime() > laneMaxEndTs) { lane.push(task); placed = true; break; }
+      }
+      if (!placed) lanes.push([task]);
+    });
+    groupLanes[g] = lanes;
+  });
+
+  let html = '<thead>';
+  html += `<tr><th class="area-cell" rowspan="3">${groupHdr}</th>`;
+  let mG = [], curM = null, cnt = 0;
+  dates.forEach(d => {
+    const m = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    if (m !== curM) { if (curM) mG.push({m:curM, span:cnt}); curM = m; cnt = 1; }
+    else cnt++;
+  });
+  mG.push({m:curM, span:cnt});
+  mG.forEach(g => { html += `<th colspan="${g.span}" style="background:#1e3a5f; color:#7dd3fc;">${g.m}</th>`; });
+  html += '</tr><tr>';
+  dates.forEach(d => {
+    const cls = []; if (d.getDay() === 6) cls.push('saturday');
+    const ds = _dateKey(d);
+    if (ds === TODAY) cls.push('today');
+    html += `<th class="${cls.join(' ')}">${String(d.getDate()).padStart(2,'0')}</th>`;
+  });
+  html += '</tr><tr>';
+  dates.forEach(d => {
+    const cls = []; if (d.getDay() === 6) cls.push('saturday');
+    const ds = _dateKey(d);
+    if (ds === TODAY) cls.push('today');
+    html += `<th class="${cls.join(' ')}">${WEEKDAYS[d.getDay()]}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  groups.forEach(group => {
+    const lanes = groupLanes[group];
+    lanes.forEach((lane, laneIdx) => {
+      html += '<tr>';
+      if (laneIdx === 0) {
+        let headerHtml;
+        if (ROW_MODE === 'ship') {
+          headerHtml = `<div style="font-weight:700; font-size:12px;">${group}</div>`;
+        } else {
+          const projs = [...new Set(tasks.filter(t => t.area === group).map(t => t.proj))];
+          headerHtml = `<div style="font-weight:700; font-size:12px;">${group}</div><div style="font-size:9px; color:#94a3b8; margin-top:2px;">${projs.join(', ')}</div>`;
+        }
+        html += `<td class="area-cell" rowspan="${lanes.length}">${headerHtml}</td>`;
+      }
+
+      let cursor = 0;
+      lane.sort((a,b) => _parseLocalDate(a.s) - _parseLocalDate(b.s));
+      for (const task of lane) {
+        const startIdx = dateIndex[task.s];
+        if (startIdx === undefined) continue;
+        while (cursor < startIdx) {
+          const d = dates[cursor];
+          const ds = _dateKey(d);
+          const cls = []; if (d.getDay() === 6) cls.push('saturday'); if (ds === TODAY) cls.push('today');
+          html += `<td class="${cls.join(' ')}"></td>`;
+          cursor++;
+        }
+        let span = 0;
+        const endTs = _parseLocalDate(task.e).getTime();
+        for (let i = startIdx; i < dates.length; i++) {
+          if (dates[i].getTime() > endTs) break; span++;
+        }
+        if (span < 1) span = 1;
+        const barColor = colorMap[task.task] || '#94a3b8';
+        const labelSize = span < 2 ? '7.5px' : span < 3 ? '9px' : '10.5px';
+        const labelText = ROW_MODE === 'ship' ? `${task.task} / ${task.area}` : task.task;
+        html += `<td class="bar" colspan="${span}" style="background:${barColor};"><span style="font-size:${labelSize};">${labelText}</span></td>`;
+        cursor = startIdx + span;
+      }
+      while (cursor < dates.length) {
+        const d = dates[cursor];
+        const ds = _dateKey(d);
+        const cls = []; if (d.getDay() === 6) cls.push('saturday'); if (ds === TODAY) cls.push('today');
+        html += `<td class="${cls.join(' ')}"></td>`;
+        cursor++;
+      }
+      html += '</tr>';
+    });
+  });
+  html += '</tbody>';
+
+  const gwrap = document.createElement('div');
+  gwrap.className = 'gantt-wrap';
+  const tbl = document.createElement('table');
+  tbl.className = 'excel-gantt';
+  tbl.innerHTML = html;
+  gwrap.appendChild(tbl);
+  wrap.appendChild(gwrap);
+  return wrap;
+}
+
+// ── 메인 초기화 ─────────────────────────────────────────
+const root = document.getElementById('sections-root');
+if (!SECTIONS || SECTIONS.length === 0) {
+  root.innerHTML = '<div class="section"><div class="empty">선택 조건에 해당하는 작업이 없습니다.</div></div>';
+} else {
+  SECTIONS.forEach(s => { root.appendChild(renderSection(s)); });
+}
+</script>
+
+</body>
+</html>

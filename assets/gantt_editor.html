@@ -1,0 +1,857 @@
+<!--
+╔══════════════════════════════════════════════════════════════════╗
+║  파일   : assets/gantt_editor.html                                ║
+║  용도   : Streamlit 간트 편집 컴포넌트 (엑셀식 그리드)           ║
+║  연동   : pages/proc_2.py 의 _render_gantt_component() 함수로 호출║
+║                                                                   ║
+║  데이터 주입:                                                     ║
+║    - /*__GANTT_DATA__*/[]  →  Python이 JSON 리스트 주입          ║
+║    - __TODAY_DATE__       →  오늘 날짜 문자열 주입               ║
+║                                                                   ║
+║  저장 방식: pendingChanges → JSON 파일 다운로드                   ║
+║    → Streamlit 업로드 박스로 전달 → save_gantt_changes() 실행    ║
+╚══════════════════════════════════════════════════════════════════╝
+-->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>공정 타임라인 편집기</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: "Malgun Gothic", "맑은 고딕", -apple-system, sans-serif;
+  background: #0a1628;
+  color: #e2e8f0;
+  padding: 12px;
+}
+
+/* ── 상단 범례 + 상태 표시 ── */
+.legend-row {
+  display: flex; gap: 1rem; flex-wrap: wrap;
+  font-size: 0.82rem; margin-bottom: 0.6rem;
+  padding: 8px; background: rgba(15,35,65,0.4); border-radius: 6px;
+}
+.legend-item { display: flex; align-items: center; gap: 0.3rem; }
+.legend-box { width: 14px; height: 14px; border-radius: 2px; }
+
+.status-bar {
+  margin-bottom: 0.6rem; padding: 0.4rem 0.8rem;
+  background: rgba(56,189,248,0.08); border-radius: 4px;
+  font-size: 0.85rem; color: #e2e8f0;
+}
+
+/* ── 그리드 컨테이너 ── */
+.gantt-wrap {
+  position: relative;  /* 드래그 프리뷰 오버레이를 위해 필요 */
+  overflow-x: auto; overflow-y: auto;
+  background: #0d1f3c;
+  border: 1px solid rgba(56,189,248,0.2);
+  border-radius: 8px;
+  max-height: 520px;
+}
+
+/* 드래그 중 새 위치 프리뷰 오버레이 */
+#drag-preview {
+  position: absolute;
+  pointer-events: none;
+  z-index: 100;
+  box-sizing: border-box;
+  border: 2px dashed #fbbf24;
+  background: rgba(251,191,36,0.25);
+  border-radius: 2px;
+  display: none;
+  box-shadow: 0 0 8px rgba(251,191,36,0.35);
+}
+#drag-preview .preview-label {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(10,22,40,0.85); color: #fbbf24;
+  padding: 2px 8px; border-radius: 3px;
+  font-size: 10.5px; font-weight: 700; white-space: nowrap;
+}
+
+/* ── 엑셀식 그리드 ── */
+.excel-gantt {
+  border-collapse: collapse;
+  font-family: 'Malgun Gothic', monospace;
+  font-size: 10.5px;
+  color: #e2e8f0;
+  background: #0d1f3c;
+  table-layout: fixed;
+}
+.excel-gantt th, .excel-gantt td {
+  border: 1px solid rgba(56,189,248,0.12);
+  padding: 0; text-align: center; vertical-align: middle;
+  height: 22px; min-width: 26px; max-width: 26px;
+  overflow: hidden; white-space: nowrap;
+}
+.excel-gantt .area-cell {
+  background: #0a1628; color: #7dd3fc; font-weight: 600;
+  text-align: center; padding: 4px 6px;
+  min-width: 90px; max-width: 90px;
+  position: sticky; left: 0; z-index: 5;
+  border-right: 2px solid rgba(56,189,248,0.3);
+  font-size: 11px;
+}
+.excel-gantt thead th {
+  background: #0f2847; color: #e2e8f0;
+  font-weight: 600; font-size: 10px; padding: 3px 0;
+  position: sticky; z-index: 4;
+}
+.excel-gantt thead th.area-cell { z-index: 10; background: #0a1628; }
+.excel-gantt thead tr:nth-child(1) th { top: 0; }
+.excel-gantt thead tr:nth-child(2) th { top: 24px; }
+.excel-gantt thead tr:nth-child(3) th { top: 48px; }
+
+.excel-gantt td.saturday, .excel-gantt th.saturday {
+  background: rgba(253,224,71,0.12) !important;
+}
+.excel-gantt td.today, .excel-gantt th.today {
+  background: rgba(244,63,94,0.18) !important;
+  color: #fca5a5; font-weight: 700;
+}
+
+/* ── 작업 막대 ── */
+.excel-gantt td.bar {
+  color: #0a1628 !important; font-weight: 600;
+  padding: 0 6px; font-size: 10.5px;
+  border: 1px solid rgba(0,0,0,0.2);
+  cursor: move; text-overflow: ellipsis;
+  position: relative; user-select: none;
+}
+.excel-gantt td.bar:hover { outline: 2px solid #fbbf24; outline-offset: -2px; }
+.excel-gantt td.bar:hover::before, .excel-gantt td.bar:hover::after {
+  content: ''; position: absolute; top: 2px; bottom: 2px;
+  width: 3px; background: rgba(0,0,0,0.45); pointer-events: none;
+}
+.excel-gantt td.bar:hover::before { left: 1px; }
+.excel-gantt td.bar:hover::after  { right: 1px; }
+.excel-gantt td.bar.dragging { opacity: 0.5; outline: 2px dashed #fbbf24 !important; }
+
+/* ── 막대 색상은 JavaScript에서 동적 배정 (공종=톤, 작업내용=개별 색) ── */
+
+/* ── 변경 내역 패널 ── */
+.pending-panel {
+  margin-top: 12px; padding: 12px;
+  background: rgba(251,191,36,0.08);
+  border: 1px solid rgba(251,191,36,0.3);
+  border-radius: 8px;
+}
+.pending-panel h4 {
+  color: #fbbf24; font-size: 1rem; margin-bottom: 0.6rem;
+}
+.pending-panel table {
+  width: 100%; border-collapse: collapse; font-size: 0.82rem;
+}
+.pending-panel th {
+  background: #0a1628; color: #7dd3fc;
+  padding: 0.4rem; text-align: left;
+}
+.pending-panel td {
+  background: #0d1f3c; color: #e2e8f0;
+  padding: 0.4rem; border-bottom: 1px solid rgba(56,189,248,0.1);
+}
+.btn-row { margin-top: 0.8rem; display: flex; gap: 0.5rem; }
+.btn-row button {
+  flex: 1; border: none; padding: 0.6rem; border-radius: 4px;
+  cursor: pointer; font-size: 0.9rem; font-weight: 500; color: white;
+}
+.btn-save   { background: #10b981; }
+.btn-save:hover   { background: #059669; }
+.btn-cancel { background: #475569; }
+.btn-cancel:hover { background: #334155; }
+
+.msg-box {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 100px; color: #94a3b8; font-size: 0.95rem;
+  background: rgba(56,189,248,0.05); border-radius: 6px;
+  padding: 1rem;
+}
+</style>
+</head>
+<body>
+
+<!-- ── 범례 (공종 항목은 JavaScript에서 동적 생성) ── -->
+<div id="legend-row" class="legend-row">
+  <span class="legend-item" style="margin-left:auto;">
+    <span class="legend-box" style="background:rgba(253,224,71,0.3); border:1px solid #fbbf24;"></span>토요일
+  </span>
+  <span class="legend-item">
+    <span class="legend-box" style="background:rgba(244,63,94,0.3); border:1px solid #f43f5e;"></span>오늘
+  </span>
+</div>
+
+<!-- ── 상태 표시 ── -->
+<div id="status-bar" class="status-bar">
+  📊 공정 타임라인 — 막대를 드래그하여 일정을 조정하세요
+</div>
+
+<!-- ── 그리드 ── -->
+<div id="gantt-wrap" class="gantt-wrap">
+  <table id="gantt-grid" class="excel-gantt"></table>
+</div>
+<div id="gantt-message" class="msg-box" style="display:none;"></div>
+
+<!-- ── 변경 내역 패널 ── -->
+<div id="pending-changes" class="pending-panel" style="display:none;"></div>
+
+<script>
+// ══════════════════════════════════════════════
+// 【Python에서 주입되는 데이터】
+// ══════════════════════════════════════════════
+const ganttData         = /*__GANTT_DATA__*/[];
+const ganttDataOriginal = JSON.parse(JSON.stringify(ganttData));
+const TODAY             = '__TODAY_DATE__';
+const IS_EDITABLE       = __IS_EDITABLE__;
+const CURRENT_USER      = '__CURRENT_USER__';
+const ROW_MODE          = '__ROW_MODE__';  // 'area' | 'ship'
+
+// 변경 내역 누적
+let pendingChanges = [];
+
+// ══════════════════════════════════════════════
+// 동적 색상 시스템
+//   - 공종 수에 관계없이 황금각(137.5°) 분포로 색조 자동 배정
+//   - 같은 작업내용 = 같은 색 (구역/공종 무관)
+// ══════════════════════════════════════════════
+
+// 공종별 색조(hue) 배정 — 황금각 분포로 최대 시각적 차별화
+function assignGjHues(data) {
+  const gjList = [];
+  const seen   = new Set();
+  data.forEach(t => {
+    if (t.gj && !seen.has(t.gj)) { gjList.push(t.gj); seen.add(t.gj); }
+  });
+  const hueMap = {};
+  gjList.forEach((gj, i) => {
+    // 200(하늘)을 시작점으로 황금각(137.5°) 간격
+    hueMap[gj] = Math.round((200 + i * 137.5) % 360);
+  });
+  return hueMap;
+}
+
+// 특정 색조에서 idx번째 변형 색상 생성 (HSL)
+// 다크 배경 + 어두운 텍스트 모두 지원: S 60~85%, L 55~70%
+function paletteColor(hue, idx) {
+  const VARIANTS = [
+    [72, 63], [84, 57], [62, 70], [88, 54], [68, 67], [78, 60],
+  ];
+  const [s, l] = VARIANTS[idx % VARIANTS.length];
+  return `hsl(${hue},${s}%,${l}%)`;
+}
+
+// 작업내용 기준 색상 맵 (키: task명 — 구역·공종 무관, 같은 작업명=같은 색)
+function buildColorMap(data, gjHueMap) {
+  const map   = {};
+  const gjIdx = {};
+  data.forEach(t => {
+    if (!map[t.task]) {
+      const hue    = gjHueMap[t.gj] ?? 0;
+      const idx    = gjIdx[t.gj] ?? 0;
+      map[t.task]  = paletteColor(hue, idx);
+      gjIdx[t.gj]  = idx + 1;
+    }
+  });
+  return map;
+}
+
+// 범례 동적 렌더링 (공종 목록을 데이터에서 읽어 생성)
+function renderLegend(gjHueMap) {
+  const el = document.getElementById('legend-row');
+  if (!el) return;
+  const staticSuffix = el.innerHTML;  // 토요일/오늘 항목 보존
+  let html = '<span style="font-size:0.78rem;color:#64748b;margin-right:0.4rem;flex-shrink:0;">공종 ▶</span>';
+  Object.entries(gjHueMap).forEach(([gj, hue]) => {
+    const c = [paletteColor(hue,0), paletteColor(hue,1), paletteColor(hue,2)];
+    html += `<span class="legend-item">
+      <span class="legend-box" style="background:linear-gradient(90deg,${c[0]},${c[1]},${c[2]});"></span>
+      ${gj}
+    </span>`;
+  });
+  html += '<span style="font-size:0.73rem;color:#475569;margin:0 0.5rem;flex-shrink:0;">— 작업내용별 자동 구분</span>';
+  el.innerHTML = html + staticSuffix;
+}
+
+const gjHues   = assignGjHues(ganttData);
+const colorMap = buildColorMap(ganttData, gjHues);
+
+// ══════════════════════════════════════════════
+// Y축 구역 정렬 함수 (해도님 규칙)
+//   NAV-DK → DK 역순 → UPP-DK → M블럭(숫자↑, P→C→S)
+// ══════════════════════════════════════════════
+function sortAreas(areas) {
+  const SIDE_ORDER = { 'P': 0, 'C': 1, 'S': 2 };
+  const getCategory = (n) => {
+    if (n === 'NAV-DK') return 0;
+    if (n === 'UPP-DK') return 2;
+    if (n.endsWith('-DK')) return 1;
+    if (/^M\d+/.test(n)) return 3;
+    return 4;
+  };
+  const parseMBlock = (n) => {
+    const m = n.match(/^M(\d+)([A-Z]?)/);
+    return m ? [parseInt(m[1],10), m[2]||''] : [99999,''];
+  };
+  return [...areas].sort((a,b) => {
+    const ca = getCategory(a), cb = getCategory(b);
+    if (ca !== cb) return ca - cb;
+    if (ca === 1) return b.charCodeAt(0) - a.charCodeAt(0);
+    if (ca === 3) {
+      const [nA, sA] = parseMBlock(a);
+      const [nB, sB] = parseMBlock(b);
+      if (nA !== nB) return nA - nB;
+      return (SIDE_ORDER[sA]??9) - (SIDE_ORDER[sB]??9);
+    }
+    return a.localeCompare(b);
+  });
+}
+
+// ══════════════════════════════════════════════
+// 날짜 유틸 — 모두 LOCAL 타임존 기준 (UTC/local 혼용 timezone 버그 방지)
+// ══════════════════════════════════════════════
+function _parseLocalDate(s) {
+  // "YYYY-MM-DD" → 로컬 자정 Date
+  const [y, m, d] = String(s).split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+function _dateKey(d) {
+  // Date → "YYYY-MM-DD" (LOCAL 기준)
+  const y  = d.getFullYear();
+  const m  = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+function daysBetween(d1, d2) {
+  // 로컬 자정 기준으로 일수 차이 계산
+  const a = (d1 instanceof Date) ? d1 : _parseLocalDate(d1);
+  const b = (d2 instanceof Date) ? d2 : _parseLocalDate(d2);
+  return Math.round((b - a) / 86400000);
+}
+
+// ══════════════════════════════════════════════
+// 메인 렌더링
+// ══════════════════════════════════════════════
+function render() {
+  const gridEl = document.getElementById('gantt-grid');
+  const wrapEl = document.getElementById('gantt-wrap');
+  const msgEl  = document.getElementById('gantt-message');
+
+  if (!ganttData || ganttData.length === 0) {
+    wrapEl.style.display = 'none';
+    msgEl.style.display  = 'flex';
+    msgEl.innerHTML      = '⚠️ 표시할 작업 데이터가 없습니다.';
+    return;
+  }
+  wrapEl.style.display = 'block';
+  msgEl.style.display  = 'none';
+
+  // 그룹 키 (row_mode에 따라 구역 or 호선)
+  const groupKey  = ROW_MODE === 'ship' ? 'proj' : 'area';
+  const groupHdr  = ROW_MODE === 'ship' ? '호선' : '구역 / 호선';
+  const groupsInData = [...new Set(ganttData.map(t => t[groupKey]))];
+  const groups = ROW_MODE === 'ship'
+      ? groupsInData.sort((a,b) => String(a).localeCompare(String(b)))
+      : sortAreas(groupsInData);
+
+  // 날짜 범위 (일요일 제외) — 로컬 자정 기준 반복으로 timezone-safe
+  const allStartsLocal = ganttData.map(t => _parseLocalDate(t.s).getTime());
+  const allEndsLocal   = ganttData.map(t => _parseLocalDate(t.e).getTime());
+  const minStart = new Date(Math.min(...allStartsLocal));
+  const maxEnd   = new Date(Math.max(...allEndsLocal));
+  const startCur = new Date(minStart.getFullYear(), minStart.getMonth(), minStart.getDate() - 3);
+  const endCur   = new Date(maxEnd.getFullYear(),   maxEnd.getMonth(),   maxEnd.getDate()   + 3);
+  const dates = [];
+  for (let cur = new Date(startCur); cur.getTime() <= endCur.getTime();
+       cur.setDate(cur.getDate() + 1)) {
+    if (cur.getDay() === 0) continue;
+    dates.push(new Date(cur.getTime()));
+  }
+  const dateIndex = {};
+  dates.forEach((d,i) => { dateIndex[_dateKey(d)] = i; });
+
+  // 그룹별 레인 분배 (겹치면 별도 레인)
+  const groupLanes = {};
+  groups.forEach(g => {
+    const tasks = ganttData.filter(t => t[groupKey] === g);
+    tasks.sort((x,y) => _parseLocalDate(x.s) - _parseLocalDate(y.s));
+    const lanes = [];
+    tasks.forEach(task => {
+      let placed = false;
+      for (const lane of lanes) {
+        // 가장 늦게 끝나는 task 의 종료일을 기준으로 비교
+        // (정렬은 시작일 기준이므로 마지막 push 가 가장 늦은 종료일이 아닐 수 있음)
+        let laneMaxEndTs = -Infinity;
+        for (const t of lane) {
+          const ts = _parseLocalDate(t.e).getTime();
+          if (ts > laneMaxEndTs) laneMaxEndTs = ts;
+        }
+        // 종료일 == 시작일 이어도 같은 컬럼을 공유할 수 없으므로 strict (>)
+        if (_parseLocalDate(task.s).getTime() > laneMaxEndTs) {
+          lane.push(task); placed = true; break;
+        }
+      }
+      if (!placed) lanes.push([task]);
+    });
+    groupLanes[g] = lanes;
+  });
+
+  const WEEKDAYS = ['일','월','화','수','목','금','토'];
+  let html = '<thead>';
+
+  // 월 헤더
+  html += `<tr><th class="area-cell" rowspan="3">${groupHdr}</th>`;
+  let mGroups = [], curM = null, curCnt = 0;
+  dates.forEach(d => {
+    const m = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    if (m !== curM) {
+      if (curM) mGroups.push({m:curM, span:curCnt});
+      curM = m; curCnt = 1;
+    } else curCnt++;
+  });
+  mGroups.push({m:curM, span:curCnt});
+  mGroups.forEach(g => {
+    html += `<th colspan="${g.span}" style="background:#1e3a5f; color:#7dd3fc;">${g.m}</th>`;
+  });
+  html += '</tr>';
+
+  // 일 헤더
+  html += '<tr>';
+  dates.forEach(d => {
+    const day = d.getDay();
+    const dstr = _dateKey(d);
+    const cls = [];
+    if (day === 6) cls.push('saturday');
+    if (dstr === TODAY) cls.push('today');
+    html += `<th class="${cls.join(' ')}">${String(d.getDate()).padStart(2,'0')}</th>`;
+  });
+  html += '</tr>';
+
+  // 요일 헤더
+  html += '<tr>';
+  dates.forEach(d => {
+    const day = d.getDay();
+    const dstr = _dateKey(d);
+    const cls = [];
+    if (day === 6) cls.push('saturday');
+    if (dstr === TODAY) cls.push('today');
+    html += `<th class="${cls.join(' ')}">${WEEKDAYS[day]}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  // 바디
+  groups.forEach(group => {
+    const lanes = groupLanes[group];
+    lanes.forEach((lane, laneIdx) => {
+      html += '<tr>';
+      if (laneIdx === 0) {
+        let headerHtml;
+        if (ROW_MODE === 'ship') {
+          // 호선 모드: 호선명만 표시
+          headerHtml = `<div style="font-weight:700; font-size:12px;">${group}</div>`;
+        } else {
+          // 구역 모드: 구역 + 해당 구역의 호선 리스트
+          const projs = [...new Set(ganttData.filter(t => t.area === group).map(t => t.proj))];
+          headerHtml = `
+            <div style="font-weight:700; font-size:12px;">${group}</div>
+            <div style="font-size:9px; color:#94a3b8; margin-top:2px;">${projs.join(', ')}</div>
+          `;
+        }
+        html += `<td class="area-cell" rowspan="${lanes.length}">${headerHtml}</td>`;
+      }
+
+      let cursor = 0;
+      lane.sort((a,b) => _parseLocalDate(a.s) - _parseLocalDate(b.s));
+      for (const task of lane) {
+        const startIdx = dateIndex[task.s];
+        if (startIdx === undefined) continue;
+
+        while (cursor < startIdx) {
+          const d = dates[cursor];
+          const dstr = _dateKey(d);
+          const cls = [];
+          if (d.getDay() === 6) cls.push('saturday');
+          if (dstr === TODAY) cls.push('today');
+          html += `<td class="${cls.join(' ')}" data-date="${dstr}" data-area="${group}" data-lane="${laneIdx}"></td>`;
+          cursor++;
+        }
+
+        let span = 0;
+        const endTs = _parseLocalDate(task.e).getTime();
+        for (let i = startIdx; i < dates.length; i++) {
+          if (dates[i].getTime() > endTs) break;
+          span++;
+        }
+        if (span < 1) span = 1;
+
+        const barColor  = colorMap[task.task] || '#94a3b8';
+        const labelSize = span < 2 ? '7.5px' : span < 3 ? '9px' : '10.5px';
+        // 호선 모드: "작업내용 / 구역", 구역 모드: "작업내용"
+        const labelText = ROW_MODE === 'ship'
+          ? `${task.task} / ${task.area}`
+          : task.task;
+        const label = `<span style="font-size:${labelSize};">${labelText}</span>`;
+        const title = IS_EDITABLE
+          ? `${task.proj} · ${task.area} · ${task.gj} · ${task.task}\n${task.s} ~ ${task.e}`
+          : `🔒 편집 권한 없음\n${task.proj} · ${task.area} · ${task.gj} · ${task.task}\n${task.s} ~ ${task.e}`;
+        html += `<td class="bar" colspan="${span}" style="background:${barColor};"
+                   data-task-id="${task.id}" data-start="${task.s}"
+                   data-end="${task.e}" data-area="${task.area}"
+                   title="${title}">${label}</td>`;
+        cursor = startIdx + span;
+      }
+
+      while (cursor < dates.length) {
+        const d = dates[cursor];
+        const dstr = _dateKey(d);
+        const cls = [];
+        if (d.getDay() === 6) cls.push('saturday');
+        if (dstr === TODAY) cls.push('today');
+        html += `<td class="${cls.join(' ')}" data-date="${dstr}" data-area="${group}" data-lane="${laneIdx}"></td>`;
+        cursor++;
+      }
+      html += '</tr>';
+    });
+  });
+  html += '</tbody>';
+  gridEl.innerHTML = html;
+
+  // 권한에 따른 상태바 메시지 및 막대 커서 설정
+  document.getElementById('status-bar').innerHTML = IS_EDITABLE
+    ? `📊 공정 타임라인 — 막대를 드래그하여 일정을 조정하세요 &nbsp;<span style="color:#86efac;">✅ ${CURRENT_USER}</span>`
+    : `🔒 읽기 전용 — <strong style="color:#fca5a5;">편집 권한이 없습니다.</strong> &nbsp;관리자에게 권한을 요청하세요. <span style="color:#64748b;">(접속자: ${CURRENT_USER})</span>`;
+
+  if (!IS_EDITABLE) {
+    document.querySelectorAll('#gantt-grid td.bar').forEach(el => {
+      el.style.cursor = 'default';
+    });
+  }
+
+  attachDragHandlers();
+  updatePendingPanel();
+  // 렌더 직후 오늘 날짜 셀이 가로 중앙에 오도록 스크롤
+  scrollToToday();
+}
+
+// ══════════════════════════════════════════════
+// 오늘 날짜 가로 중앙 스크롤
+// ══════════════════════════════════════════════
+function scrollToToday() {
+  const wrap = document.getElementById('gantt-wrap');
+  if (!wrap) return;
+  // thead에 있는 오늘 셀을 우선 타겟 (DOM 순서상 첫 매치가 헤더)
+  const todayCell = wrap.querySelector('.excel-gantt .today');
+  if (!todayCell) return;
+  // wrap 내부 좌표 기준 오늘 셀의 중심 위치
+  const wrapRect = wrap.getBoundingClientRect();
+  const cellRect = todayCell.getBoundingClientRect();
+  const cellCenterInWrap = (cellRect.left - wrapRect.left) + wrap.scrollLeft + (cellRect.width / 2);
+  wrap.scrollLeft = cellCenterInWrap - (wrap.clientWidth / 2);
+}
+
+// ══════════════════════════════════════════════
+// 드래그 편집
+// ══════════════════════════════════════════════
+let dragState = null;
+
+function attachDragHandlers() {
+  if (!IS_EDITABLE) return;  // 편집 권한 없으면 드래그 바인딩 안 함
+  document.querySelectorAll('#gantt-grid td.bar').forEach(el => {
+    el.addEventListener('mousedown', onBarMouseDown);
+  });
+}
+
+function onBarMouseDown(e) {
+  const bar = e.currentTarget;
+  const rect = bar.getBoundingClientRect();
+  const relX = e.clientX - rect.left;
+  let mode = 'move';
+  if (relX <= 6) mode = 'resize-start';
+  else if (relX >= rect.width - 6) mode = 'resize-end';
+
+  dragState = {
+    taskId:        bar.dataset.taskId,
+    mode:          mode,
+    originalStart: bar.dataset.start,
+    originalEnd:   bar.dataset.end,
+    originalArea:  bar.dataset.area,
+    barEl:         bar,
+  };
+  bar.classList.add('dragging');
+  document.addEventListener('mousemove', onDragMove);
+  document.addEventListener('mouseup',   onDragEnd);
+  e.preventDefault();
+}
+
+// ══════════════════════════════════════════════
+// 드래그 프리뷰 (새 위치/크기 반투명 오버레이)
+// ══════════════════════════════════════════════
+let previewEl = null;
+
+// 주어진 tr에서 targetDate(YYYY-MM-DD)에 해당하는 셀 위치/폭 반환.
+// - 일반 날짜 셀: 셀 전체
+// - 막대 셀(colspan): 셀을 colspan개 가상 칸으로 쪼개 해당 날짜의 offset/width 반환
+function _cellPosByDate(tr, targetDate) {
+  if (!tr || !targetDate) return null;
+  const [ty, tm, td_] = targetDate.split('-').map(Number);
+  const tTs = Date.UTC(ty, tm - 1, td_);
+  for (const cell of tr.querySelectorAll('td')) {
+    if (cell.dataset.date === targetDate) {
+      const r = cell.getBoundingClientRect();
+      return { cell, leftRel: 0, width: r.width };
+    }
+    if (cell.dataset.start) {
+      const colspan = parseInt(cell.getAttribute('colspan') || '1', 10);
+      const [sy, sm, sd] = cell.dataset.start.split('-').map(Number);
+      const sTs = Date.UTC(sy, sm - 1, sd);
+      const diffDays = Math.round((tTs - sTs) / 86400000);
+      if (diffDays >= 0 && diffDays < colspan) {
+        const r = cell.getBoundingClientRect();
+        const w = r.width / colspan;
+        return { cell, leftRel: diffDays * w, width: w };
+      }
+    }
+  }
+  return null;
+}
+
+function _isoAddDays(dateStr, days) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().split('T')[0];
+}
+
+function _diffDays(aStr, bStr) {
+  const [ay, am, ad] = aStr.split('-').map(Number);
+  const [by, bm, bd] = bStr.split('-').map(Number);
+  return Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000);
+}
+
+function updateDragPreview(state, hoverDate) {
+  if (!state || !hoverDate) return;
+  const bar = state.barEl;
+  const tr = bar.closest('tr');
+  const wrap = document.getElementById('gantt-wrap');
+  if (!tr || !wrap) return;
+
+  // 모드별 프리뷰 시작/종료 일자 계산
+  let pStart, pEnd;
+  if (state.mode === 'move') {
+    const dur = _diffDays(state.originalStart, state.originalEnd);
+    pStart = hoverDate;
+    pEnd = _isoAddDays(hoverDate, dur);
+  } else if (state.mode === 'resize-start') {
+    if (_diffDays(hoverDate, state.originalEnd) <= 0) return;
+    pStart = hoverDate;
+    pEnd = state.originalEnd;
+  } else {  // resize-end
+    if (_diffDays(state.originalStart, hoverDate) <= 0) return;
+    pStart = state.originalStart;
+    pEnd = hoverDate;
+  }
+
+  const startInfo = _cellPosByDate(tr, pStart);
+  const endInfo   = _cellPosByDate(tr, pEnd);
+  if (!startInfo || !endInfo) return;
+
+  const wrapRect  = wrap.getBoundingClientRect();
+  const startRect = startInfo.cell.getBoundingClientRect();
+  const endRect   = endInfo.cell.getBoundingClientRect();
+
+  const left  = (startRect.left + startInfo.leftRel) - wrapRect.left + wrap.scrollLeft;
+  const right = (endRect.left   + endInfo.leftRel + endInfo.width) - wrapRect.left + wrap.scrollLeft;
+  const top    = startRect.top - wrapRect.top + wrap.scrollTop;
+  const height = startRect.height;
+
+  if (!previewEl) {
+    previewEl = document.createElement('div');
+    previewEl.id = 'drag-preview';
+    const lbl = document.createElement('span');
+    lbl.className = 'preview-label';
+    previewEl.appendChild(lbl);
+    wrap.appendChild(previewEl);
+  }
+  previewEl.style.left   = left + 'px';
+  previewEl.style.top    = top + 'px';
+  previewEl.style.width  = Math.max(right - left, 4) + 'px';
+  previewEl.style.height = height + 'px';
+  previewEl.style.display = 'block';
+  previewEl.querySelector('.preview-label').textContent = `${pStart} → ${pEnd}`;
+}
+
+function clearDragPreview() {
+  if (previewEl) previewEl.style.display = 'none';
+}
+
+// 커서 좌표 기준으로 td 셀이 가리키는 실제 날짜를 반환.
+// - 일반 날짜 셀: data-date 그대로
+// - 막대 셀(colspan으로 여러 날 묶임): 커서 X 위치로 어느 날 칸인지 계산
+function _cellDateAt(td, clientX) {
+  if (!td) return null;
+  if (td.dataset.date) return td.dataset.date;
+  if (!td.dataset.start) return null;
+  const rect = td.getBoundingClientRect();
+  const colspan = parseInt(td.getAttribute('colspan'), 10) || 1;
+  const cellWidth = rect.width / colspan;
+  let dayIdx = Math.floor((clientX - rect.left) / cellWidth);
+  if (dayIdx < 0) dayIdx = 0;
+  if (dayIdx >= colspan) dayIdx = colspan - 1;
+  // 타임존 영향 없이 일자 가산 (UTC 기반)
+  const [y, m, d] = td.dataset.start.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + dayIdx);
+  return dt.toISOString().split('T')[0];
+}
+
+function onDragMove(e) {
+  if (!dragState) return;
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const td = el?.closest('td');
+  const date = _cellDateAt(td, e.clientX);
+  if (date) {
+    document.getElementById('status-bar').innerHTML =
+      `⏳ 드래그 중 → <strong style="color:#fbbf24;">${date}</strong> (${dragState.mode})`;
+    updateDragPreview(dragState, date);
+  }
+}
+
+function onDragEnd(e) {
+  if (!dragState) return;
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  const td = el?.closest('td');
+  const dropDate = _cellDateAt(td, e.clientX);
+
+  dragState.barEl.classList.remove('dragging');
+  clearDragPreview();
+  if (dropDate) applyDragChange(dragState, dropDate);
+
+  document.removeEventListener('mousemove', onDragMove);
+  document.removeEventListener('mouseup',   onDragEnd);
+  dragState = null;
+  document.getElementById('status-bar').innerHTML =
+    '📊 공정 타임라인 — 막대를 드래그하여 일정을 조정하세요';
+}
+
+function applyDragChange(state, newDate) {
+  const task = ganttData.find(t => t.id === state.taskId);
+  if (!task) return;
+
+  const origStart = new Date(state.originalStart);
+  const origEnd   = new Date(state.originalEnd);
+  const durDays   = Math.round((origEnd - origStart) / 86400000);
+  const newObj    = new Date(newDate);
+
+  let newStart, newEnd;
+  if (state.mode === 'move') {
+    newStart = newDate;
+    const endObj = new Date(newObj);
+    endObj.setDate(endObj.getDate() + durDays);
+    newEnd = endObj.toISOString().split('T')[0];
+  } else if (state.mode === 'resize-start') {
+    if (newObj >= origEnd) { alert('시작일을 종료일 이후로 둘 수 없습니다.'); return; }
+    newStart = newDate; newEnd = state.originalEnd;
+  } else {
+    if (newObj <= origStart) { alert('종료일을 시작일 이전으로 둘 수 없습니다.'); return; }
+    newStart = state.originalStart; newEnd = newDate;
+  }
+
+  if (newStart === task.s && newEnd === task.e) return;
+
+  const existing = pendingChanges.find(c => c.id === task.id);
+  if (existing) {
+    existing.newStart = newStart; existing.newEnd = newEnd; existing.newArea = task.area;
+  } else {
+    pendingChanges.push({
+      id: task.id, proj: task.proj, gj: task.gj, task: task.task,
+      oldArea: task.area, oldStart: state.originalStart, oldEnd: state.originalEnd,
+      newArea: task.area, newStart, newEnd,
+    });
+  }
+
+  task.s = newStart;
+  task.e = newEnd;
+  render();
+}
+
+// ══════════════════════════════════════════════
+// 변경 내역 패널
+// ══════════════════════════════════════════════
+function updatePendingPanel() {
+  const panel = document.getElementById('pending-changes');
+  if (pendingChanges.length === 0) {
+    panel.style.display = 'none'; panel.innerHTML = ''; return;
+  }
+  panel.style.display = 'block';
+  let html = `<h4>⚠️ 변경 내역 (저장 대기 ${pendingChanges.length}건)</h4>
+    <div style="max-height:200px; overflow:auto;">
+    <table><thead><tr>
+      <th>호선</th><th>구역</th><th>공종</th><th>작업</th>
+      <th>변경 전</th><th>변경 후</th>
+    </tr></thead><tbody>`;
+  pendingChanges.forEach(c => {
+    html += `<tr>
+      <td>${c.proj}</td><td>${c.newArea}</td><td>${c.gj}</td><td>${c.task}</td>
+      <td style="color:#94a3b8; font-size:0.78rem;">${c.oldStart}<br>~ ${c.oldEnd}</td>
+      <td style="color:#fbbf24; font-size:0.78rem;">${c.newStart}<br>~ ${c.newEnd}</td>
+    </tr>`;
+  });
+  html += `</tbody></table></div>
+    <div class="btn-row">
+      <button class="btn-save"   onclick="saveGanttChanges()">💾 저장 (JSON 다운로드)</button>
+      <button class="btn-cancel" onclick="cancelGanttChanges()">↩️ 변경 취소</button>
+    </div>`;
+  panel.innerHTML = html;
+}
+
+function saveGanttChanges() {
+  // DB 반영을 위한 payload 변환
+  const payload = pendingChanges.map(c => ({
+    task_id:   c.id,
+    project:   c.proj,
+    area:      c.newArea,
+    gongjong:  c.gj,
+    task_name: c.task,
+    old_start: c.oldStart,
+    old_end:   c.oldEnd,
+    new_start: c.newStart,
+    new_end:   c.newEnd,
+  }));
+
+  // JSON 파일 다운로드 (브라우저 저장)
+  const blob = new Blob([JSON.stringify(payload, null, 2)],
+                        {type: 'application/json'});
+  const url = URL.createObjectURL(blob);
+  const ts  = new Date().toISOString().replace(/[-:T.]/g,'').slice(0, 14);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `gantt_changes_${ts}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  alert(
+    `✅ ${pendingChanges.length}건의 변경사항이 JSON 파일로 다운로드됐습니다.\n\n` +
+    `📥 하단의 "변경 내역 DB 반영"에 파일을 업로드하면 저장됩니다.`
+  );
+
+  pendingChanges = [];
+  updatePendingPanel();
+}
+
+function cancelGanttChanges() {
+  // 원본 복원
+  ganttData.length = 0;
+  JSON.parse(JSON.stringify(ganttDataOriginal)).forEach(t => ganttData.push(t));
+  pendingChanges = [];
+  render();
+}
+
+// 초기 렌더링
+renderLegend(gjHues);
+render();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,26 @@
+# 환경변수 (절대 커밋 금지)
+.env
+.env.*
+
+# Python 캐시
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Claude Code 로컬 설정
+.claude/settings.local.json
+data/.claude/
+pages/.claude/
+
+# 접속 로그
+logs/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
