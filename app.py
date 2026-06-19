@@ -90,16 +90,6 @@ def color_cls(v, good_thresh, bad_thresh, invert=False):
 # ══════════════════════════════════════════════════════════
 #  3. 공통 메뉴 데이터 및 사이드바 제어
 # ══════════════════════════════════════════════════════════
-KPI_SUBMENUS = [
-    ("kpi_1", "직영 능률/실동률 실적",          "📈"),
-    ("kpi_2", "글로벌 BEP 실적",                "💰"),
-    ("kpi_3", "협력사 전망/실적",                 "🤝"),
-    ("kpi_4", "월별 기성 전망",                  "📅"),
-    ("kpi_5", "프로젝트 예산 현황",              "💼"),
-    ("kpi_6", "프로젝트별 Punch 현황",            "🔍"),
-    ("kpi_7", "용접 불량률(배관/구조)",          "🔧"),
-]
-
 PROCESS_SUBMENUS = [
     ("proc_1", "일일 작업허가서 현황",   "🖨️"),
     ("proc_2", "사곡 거주구 제작 현황", "🚢"),
@@ -107,127 +97,11 @@ PROCESS_SUBMENUS = [
     ("proc_4", "전장 결선 자재 현황",    "🔌"),
 ]
 
-SIDEBAR_PAGES = {"proc_2", "proc_3", "proc_4", "kpi_1", "kpi_2", "kpi_4", "kpi_5", "kpi_6", "kpi_7"}
+SIDEBAR_PAGES = {"proc_2", "proc_3", "proc_4"}
 
 # ══════════════════════════════════════════════════════════
 #  4. 카드 데이터 로딩 함수 (캐시 적용)
 # ══════════════════════════════════════════════════════════
-
-@st.cache_data(ttl=300)
-def _card_kpi1():
-    from data.kpi_1_data import (
-        load_data, load_시수_data, load_targets,
-        get_능률_summary, get_실동률_summary, get_current_month,
-    )
-    df              = load_data()
-    df_직접, df_총발생 = load_시수_data()
-    df_tgt          = load_targets()
-    cur_month       = get_current_month()
-    # 능률실적 (기성/투입 비율값)
-    res_능률 = get_능률_summary(df, df_tgt, 월=[cur_month], 구분="내국인")
-    능률실적 = res_능률["선실부"].get("능률실적")
-    # 실동률실적 (직접공수/총발생 비율값, ×100 = %)
-    res_실동 = get_실동률_summary(df_직접, df_총발생, df_tgt, 월=[cur_month], 구분="내국인")
-    실동률실적 = res_실동["선실부"].get("실동률실적")
-    return {"능률실적": 능률실적, "실동률실적": 실동률실적}
-
-@st.cache_data(ttl=300)
-def _card_kpi2():
-    from data.kpi_2_data import get_group_kpi_summary
-    grp = get_group_kpi_summary()
-    return {
-        "월": grp.get("월"),
-        "1그룹_달성률": grp.get("1그룹"),
-        "2그룹_달성률": grp.get("2그룹"),
-    }
-
-@st.cache_data(ttl=300)
-def _card_kpi3():
-    """협력사별 당월 정도율(가중평균) — 메인 카드용
-    KPI_3 화면 방사형 그래프와 동일 가중치 사용
-    (투입30/지출10/능률10/처리량25/단위물량당기성25)
-    """
-    from data.kpi_3_data import (
-        get_jeongdoyul_data, COMPANY_LIST, RADAR_METRICS,
-        정도율_가중치, mask_company,
-    )
-    try:
-        data = get_jeongdoyul_data(month="당월")
-    except Exception:
-        return {"items": []}
-
-    items = []
-    for company in COMPANY_LIST:
-        d = data.get(company) if isinstance(data, dict) else None
-        v = None
-        if d:
-            실적_vals = d.get("실적", []) or []
-            if len(실적_vals) == len(RADAR_METRICS):
-                가중합 = sum(
-                    정도율_가중치[m] * float(val)
-                    for m, val in zip(RADAR_METRICS, 실적_vals)
-                    if m in 정도율_가중치
-                )
-                가중치합 = sum(
-                    정도율_가중치[m] for m in RADAR_METRICS if m in 정도율_가중치
-                )
-                if 가중치합 > 0:
-                    v = round(가중합 / 가중치합, 1)
-        items.append({"name": mask_company(company), "정도율": v})
-    return {"items": items}
-
-
-@st.cache_data(ttl=300)
-def _card_kpi4():
-    from data.kpi_4_data import load_data, get_col_map, compute_kiseong
-    from datetime import date
-    df = load_data()
-    col_map = get_col_map(df.columns.tolist())
-    today = date.today()
-    chart_df = compute_kiseong(df, col_map, today, today)
-    total = int(chart_df["total"].sum()) if not chart_df.empty else 0
-    return {"total": total}
-
-@st.cache_data(ttl=300)
-def _card_kpi5():
-    from data.kpi_5_data import load_data, preprocess_sunpyo, preprocess_gongsu, get_ship_display
-    df_s, df_g = load_data()
-    df_s = preprocess_sunpyo(df_s)
-    df_g = preprocess_gongsu(df_g)
-    urgent_projs = df_s[df_s["인도임박"] == "임박"]["프로젝트"].unique().tolist()
-    if not urgent_projs:
-        urgent_projs = df_s["프로젝트"].unique().tolist()
-    df_disp, _ = get_ship_display(df_s, df_g, urgent_projs)
-    projects = [
-        {"프로젝트": r["프로젝트"], "Progress(%)": r.get("Progress(%)", 0)}
-        for _, r in df_disp.iterrows()
-    ]
-    return {"projects": projects}
-
-@st.cache_data(ttl=300)
-def _card_kpi6():
-    from data.kpi_6_data import load_data, get_summary, get_delivery_soon_projects
-    df = load_data()
-    proj_list = get_delivery_soon_projects(df)
-    # 인도임박 호선의 잔여 punch만 집계
-    df_urgent = df[df["프로젝트"].isin(proj_list)] if proj_list else df
-    remain_urgent = get_summary(df_urgent)["remain"]
-    return {"remain": remain_urgent, "proj_cnt": len(proj_list)}
-
-@st.cache_data(ttl=300)
-def _card_kpi7():
-    from data.kpi_7_data import load_data, apply_filter, get_summary, get_target_rate
-    import pandas as pd
-    df_raw, df_target = load_data()
-    cur_year = pd.Timestamp.now().year
-    df_f = apply_filter(df_raw, cur_year, [], "전체")
-    res  = get_summary(df_f, df_target, "전체")
-    return {
-        "구조_rate":   res.get("구조", {}).get("rate",   0.0),
-        "배관_rate":   res.get("배관", {}).get("rate",   0.0),
-        "구조_target": res.get("구조", {}).get("target", 0.7),
-        "배관_target": res.get("배관", {}).get("target", 1.4),
-    }
 
 @st.cache_data(ttl=300)
 def _card_proc1():
@@ -359,10 +233,6 @@ def render_navbar(current_url_path: str = ""):
     시계는 클라이언트 측 JS(setInterval)로 갱신 — 서버 rerun 없음.
     SIDEBAR_PAGES 에서는 좌측에 사이드바 토글(햄버거) 버튼을 함께 노출.
     """
-    kpi_links  = "\n".join(
-        f'<a href="/{k}" target="_self">{n}</a>'
-        for k, n, i in KPI_SUBMENUS
-    )
     proc_links = "\n".join(
         f'<a href="/{k}" target="_self">{n}</a>'
         for k, n, i in PROCESS_SUBMENUS
@@ -382,12 +252,6 @@ def render_navbar(current_url_path: str = ""):
             {toggle_html}
             <a href="/" class="nav-logo" target="_self"><span style="color:#fff;">L</span><span style="color:#fff;">Q</span> <span style="color:#38BDF8;">A</span><span style="color:#fff;">ll</span> <span style="color:#38BDF8;">I</span><span style="color:#fff;">n</span> <span style="color:#fff;">O</span><span style="color:#fff;">ne</span></a>
             <nav class="nav-links">
-                <div class="nav-dropdown">
-                    <span class="nav-item">KPI 지표 ▾</span>
-                    <div class="nav-dropdown-menu">
-                        {kpi_links}
-                    </div>
-                </div>
                 <div class="nav-dropdown">
                     <span class="nav-item">공정 관리 ▾</span>
                     <div class="nav-dropdown-menu">
@@ -712,217 +576,18 @@ def render_home():
     </style>
     """)
 
-    # ── 에셋 로딩 ──
-    check_icon_b64 = load_icon("check")
-
     # ── 데이터 로딩 ──
-    d1   = safe(_card_kpi1)
-    d2   = safe(_card_kpi2)
-    d3   = safe(_card_kpi3)
-    d4   = safe(_card_kpi4)
-    d5   = safe(_card_kpi5)
-    d6   = safe(_card_kpi6)
-    d7   = safe(_card_kpi7)
     dp1  = safe(_card_proc1)
     dp3  = safe(_card_proc3)
     dp4  = safe(_card_proc4)
     dp2i = safe(_card_proc2_delays)
 
-    능률실적  = d1.get("능률실적")
-    실동률실적 = d1.get("실동률실적")
-
     # ══════════════════════════════════════════════════════════
-    #  [1행] 4칸 균등: kpi_1 / kpi_6 / kpi_2 / kpi_3(준비중)
+    #  [1행] 2칸: 특수선 달성률 / 지연 작업 현황
     # ══════════════════════════════════════════════════════════
-    row1 = st.columns(4)
+    row1 = st.columns(2)
 
     with row1[0]:
-        # ① 능률실적·실동률실적 모두 ×100 → XX.X% 소수점 1자리, 나란히 같은 폰트
-        능률_pct = (능률실적 * 100) if 능률실적 is not None else None
-        실동률_pct = (실동률실적 * 100) if 실동률실적 is not None else None
-        능률_str = fv(능률_pct, ".1f")
-        실동_str = fv(실동률_pct, ".1f")
-        _val_style = "font-size:2.2rem; font-weight:800; color:#10B981; font-family:'Segoe UI',sans-serif; line-height:1.1;"
-        _lbl_style = "font-size:0.72rem; color:#94A3B8; font-weight:500; margin-bottom:0.25rem;"
-        _unit_style = "font-size:1.1rem; color:#64748B; font-weight:600;"
-        st.html(
-            f'<a href="/kpi_1" target="_self" class="card-link" style="display:block; height:100%;">'
-            f'<div class="neo-card glow-green">'
-            f'<div class="top-card-title" style="margin-bottom:0.8rem;">직영 능률/실동률 현황</div>'
-            f'<div style="display:flex; gap:1.5rem; align-items:flex-end; flex:1;">'
-            f'  <div>'
-            f'    <div style="{_lbl_style}">능 률</div>'
-            f'    <div style="{_val_style}">{능률_str}<span style="{_unit_style}">%</span></div>'
-            f'  </div>'
-            f'  <div style="width:1px; background:rgba(255,255,255,0.08); align-self:stretch;"></div>'
-            f'  <div>'
-            f'    <div style="{_lbl_style}">실동률</div>'
-            f'    <div style="{_val_style}">{실동_str}<span style="{_unit_style}">%</span></div>'
-            f'  </div>'
-            f'</div>'
-            f'</div></a>'
-        )
-
-    with row1[1]:
-        # ② 인도임박 호선 수 / 잔여 punch 수 나란히 같은 폰트
-        remain   = d6.get("remain", 0)
-        proj_cnt = d6.get("proj_cnt", 0)
-        _val_o = "font-size:2.2rem; font-weight:800; color:#F59E0B; font-family:'Segoe UI',sans-serif; line-height:1.1;"
-        _lbl_o = "font-size:0.72rem; color:#94A3B8; font-weight:500; margin-bottom:0.25rem;"
-        _unit_o = "font-size:1.1rem; color:#64748B; font-weight:600;"
-        st.html(
-            f'<a href="/kpi_6" target="_self" class="card-link" style="display:block; height:100%;">'
-            f'<div class="neo-card glow-orange">'
-            f'<div class="top-card-title" style="margin-bottom:0.8rem;">인도호선 punch 현황</div>'
-            f'<div style="display:flex; gap:1.5rem; align-items:flex-end; flex:1;">'
-            f'  <div>'
-            f'    <div style="{_lbl_o}">인도임박 호선</div>'
-            f'    <div style="{_val_o}">{proj_cnt:,}<span style="{_unit_o}">척</span></div>'
-            f'  </div>'
-            f'  <div style="width:1px; background:rgba(255,255,255,0.08); align-self:stretch;"></div>'
-            f'  <div>'
-            f'    <div style="{_lbl_o}">잔여 Punch</div>'
-            f'    <div style="{_val_o}">{remain:,}<span style="{_unit_o}">건</span></div>'
-            f'  </div>'
-            f'</div>'
-            f'</div></a>'
-        )
-
-    with row1[2]:
-        # ③ kpi_2: 글로벌 BEP 실적 — KPI_2 화면의 'YYYY-MM BEP 현황' 테이블 달성률
-        g1 = d2.get("1그룹_달성률")
-        g2 = d2.get("2그룹_달성률")
-        bep_월 = d2.get("월") or ""
-
-        g1_str = fv(g1, ".1f")
-        g2_str = fv(g2, ".1f")
-
-        def _달성률_색(v):
-            try:
-                f = float(v)
-                return "#10B981" if f >= 100 else ("#F59E0B" if f >= 90 else "#EF4444")
-            except Exception:
-                return "#94A3B8"
-
-        g1_c = _달성률_색(g1)
-        g2_c = _달성률_색(g2)
-
-        _lbl_b = "font-size:0.72rem; color:#94A3B8; font-weight:500; margin-bottom:0.25rem;"
-        _unit_b = "font-size:1.1rem; font-weight:600;"
-        _타이틀 = f"📊 {bep_월} BEP 현황" if bep_월 else "📊 BEP 현황"
-
-        st.html(
-            f'<a href="/kpi_2" target="_self" class="card-link" style="display:block; height:100%;">'
-            f'<div class="neo-card glow-blue">'
-            f'<div class="top-card-title" style="margin-bottom:0.8rem;">{_타이틀}</div>'
-            f'<div style="display:flex; gap:1.5rem; align-items:flex-end; flex:1;">'
-            f'  <div>'
-            f'    <div style="{_lbl_b}">1그룹 달성률</div>'
-            f'    <div style="font-size:2.2rem; font-weight:800; color:{g1_c}; font-family:\'Segoe UI\',sans-serif; line-height:1.1;">'
-            f'      {g1_str}<span style="{_unit_b} color:{g1_c};">%</span>'
-            f'    </div>'
-            f'  </div>'
-            f'  <div style="width:1px; background:rgba(255,255,255,0.08); align-self:stretch;"></div>'
-            f'  <div>'
-            f'    <div style="{_lbl_b}">2그룹 달성률</div>'
-            f'    <div style="font-size:2.2rem; font-weight:800; color:{g2_c}; font-family:\'Segoe UI\',sans-serif; line-height:1.1;">'
-            f'      {g2_str}<span style="{_unit_b} color:{g2_c};">%</span>'
-            f'    </div>'
-            f'  </div>'
-            f'</div>'
-            f'</div></a>'
-        )
-
-    with row1[3]:
-        # ④ kpi_3: 협력사 정도율 — KPI_3 방사형 그래프와 동일한 가중평균
-        items = d3.get("items", []) if isinstance(d3, dict) else []
-
-        def _정도율_색(v):
-            try:
-                f = float(v)
-                return "#10B981" if f >= 100 else ("#F59E0B" if f >= 90 else "#EF4444")
-            except Exception:
-                return "#94A3B8"
-
-        cells_html = ""
-        for idx, it in enumerate(items):
-            name  = it.get("name") or "-"
-            v     = it.get("정도율")
-            v_str = fv(v, ".1f")
-            c     = _정도율_색(v)
-            if idx > 0:
-                cells_html += (
-                    '<div style="width:1px; background:rgba(255,255,255,0.08); '
-                    'align-self:stretch;"></div>'
-                )
-            cells_html += (
-                f'<div style="flex:1; min-width:0; text-align:center;">'
-                f'  <div style="font-size:0.7rem; color:#94A3B8; font-weight:500;'
-                f' margin-bottom:0.25rem;">{name}</div>'
-                f'  <div style="font-size:1.4rem; font-weight:800; color:{c};'
-                f" font-family:'Segoe UI',sans-serif; line-height:1.1;\">"
-                f'    {v_str}<span style="font-size:0.8rem; font-weight:600;">%</span>'
-                f'  </div>'
-                f'</div>'
-            )
-
-        if not cells_html:
-            cells_html = (
-                '<div style="flex:1; text-align:center; color:#94A3B8;'
-                ' font-size:0.85rem;">데이터 없음</div>'
-            )
-
-        st.html(
-            f'<a href="/kpi_3" target="_self" class="card-link" style="display:block; height:100%;">'
-            f'<div class="neo-card glow-cyan">'
-            f'<div class="top-card-title" style="margin-bottom:0.8rem;">🤝 협력사 실적 예측 정도율</div>'
-            f'<div style="display:flex; gap:0.6rem; align-items:flex-end; flex:1;">'
-            f'{cells_html}'
-            f'</div>'
-            f'</div></a>'
-        )
-
-    st.html("<div style='height:1.5rem;'></div>")
-
-    # ══════════════════════════════════════════════════════════
-    #  [2행] 5:3:4 비율: kpi_5 / kpi_7 / proc_2(금주 운반선 주요 검사)
-    # ══════════════════════════════════════════════════════════
-    row2 = st.columns(3)
-
-    with row2[0]:
-        # ④ 섹션 타이틀: 인도임박 호선 공수 Progress
-        projs = d5.get("projects", [])
-        display_projs = projs[:4]
-        bars_html = ""
-        for i in range(4):
-            if i < len(display_projs):
-                p = display_projs[i]
-                prog = float(p.get("Progress(%)", 0))
-                bars_html += (
-                    f'<div class="prog-row">'
-                    f'<span class="prog-label">{p["프로젝트"]}</span>'
-                    f'<div class="prog-bar-bg"><div class="prog-bar-fill" style="width:{prog:.1f}%;"></div></div>'
-                    f'<span class="prog-val">{prog:.1f}%</span>'
-                    f'</div>'
-                )
-            else:
-                bars_html += (
-                    '<div class="prog-row">'
-                    '<span class="prog-label">선번 대기</span>'
-                    '<div class="prog-bar-bg"></div>'
-                    '<span class="prog-val">-</span>'
-                    '</div>'
-                )
-
-        st.html(
-            f'<a href="/kpi_5" target="_self" class="card-link" style="display:block; height:100%;">'
-            f'<div class="neo-card" style="min-height:auto; justify-content:flex-start; padding:1.5rem 1.8rem;">'
-            f'<div class="section-title">📋 인도임박 호선 공수 Progress</div>'
-            f'<div style="margin-top:0.8rem;">{bars_html}</div>'
-            f'</div></a>'
-        )
-
-    with row2[1]:
         # 특수선 Total Progress 달성율 (호선 수에 따라 유동)
         ships = dp3.get("ships", [])
         bars_html = ""
@@ -947,8 +612,8 @@ def render_home():
             f'</div></a>'
         )
 
-    with row2[2]:
-        # ⑤ 섹션: 지연 작업 현황 — proc_2 '공정 지연 리스트(전체)' 와 동일 판정
+    with row1[1]:
+        # 지연 작업 현황 — proc_2 '공정 지연 리스트(전체)' 와 동일 판정
         import pandas as pd
         df_week = dp2i if isinstance(dp2i, pd.DataFrame) else pd.DataFrame()
 
@@ -1017,12 +682,11 @@ def render_home():
     st.html("<div style='height:1.5rem;'></div>")
 
     # ══════════════════════════════════════════════════════════
-    #  [3행] 4칸 균등: proc_1 / proc_3(준비중) / kpi_4 / proc_4
+    #  [2행] 2칸: 일일 작업허가서 / 전장 결선 자재 입고율
     # ══════════════════════════════════════════════════════════
-    row3 = st.columns(4)
+    row2 = st.columns(2)
 
-    with row3[0]:
-        # ⑥ 서브타이틀: 일일 작업허가서 미출력 현황
+    with row2[0]:
         not_printed = dp1.get("not_printed", 0)
         c_val = "text-red" if not_printed > 0 else "text-green"
         st.html(
@@ -1035,43 +699,7 @@ def render_home():
             f'</div></a>'
         )
 
-    with row3[1]:
-        # 용접 불량률 (row2에서 이동)
-        구조_r = fv(d7.get("구조_rate"), ".2f", na="Na")
-        배관_r = fv(d7.get("배관_rate"), ".2f", na="Na")
-        check_img_html = f'<img src="data:image/png;base64,{check_icon_b64}" width="16" alt="✓">' if check_icon_b64 else "🔸"
-
-        st.html(
-            f'<a href="/kpi_7" target="_self" class="card-link" style="display:block; height:100%;">'
-            f'<div class="neo-card" style="min-height:auto; justify-content:flex-start;">'
-            f'<div class="section-title">🔧 용접 불량률</div>'
-            f'<div style="margin-top:1rem;">'
-            f'<div class="status-item"><span class="status-label">{check_img_html} 구조</span>'
-            f'<div class="status-val-wrap text-green"><span class="status-val">{구조_r}</span>'
-            f'<span style="font-size:0.8rem; font-weight:500;">%</span></div></div>'
-            f'<div class="status-item"><span class="status-label">{check_img_html} 배관</span>'
-            f'<div class="status-val-wrap text-green"><span class="status-val">{배관_r}</span>'
-            f'<span style="font-size:0.8rem; font-weight:500;">%</span></div></div>'
-            f'</div></div></a>'
-        )
-
-    with row3[2]:
-        # ⑦ 서브타이틀: 당일 마일스톤 기성 전망
-        val = d4.get("total", 0)
-        val_str = fv(val, ",.0f")
-        st.html(
-            f'<a href="/kpi_4" target="_self" class="card-link" style="display:block; height:100%;">'
-            f'<div class="neo-card" style="flex-direction:row; justify-content:space-between; align-items:center;">'
-            f'<div style="text-align:left;">'
-            f'<div class="section-title" style="margin-bottom:0.5rem;">📅 당일 마일스톤 기성 전망</div>'
-            f'</div>'
-            f'<div style="font-size:2.8rem; font-weight:800; color:#FFF; line-height:1; font-family:\'Segoe UI\',sans-serif;">'
-            f'{val_str}<span style="font-size:1.2rem; color:#64748B;">MH</span></div>'
-            f'</div></a>'
-        )
-
-    with row3[3]:
-        # ⑧ 서브타이틀: 자재 입고율 / 데이터: dp4 입고율(%)
+    with row2[1]:
         입고율  = float(dp4.get("입고율", 0.0))
         입고_cnt = dp4.get("입고_cnt", 0)
         신청_cnt = dp4.get("신청_cnt", 0)
@@ -1094,17 +722,6 @@ def render_home():
 # ══════════════════════════════════════════════════════════
 #  7. 하위 메뉴 팩토리 함수
 # ══════════════════════════════════════════════════════════
-def make_kpi_page_func(key, name, icon):
-    def _render():
-        render_back_button(page_home_obj)
-        try:
-            mod = __import__(f"pages.{key}", fromlist=["render"])
-            mod.render()
-        except Exception as e:
-            logger.error("KPI 페이지 렌더링 오류 (%s): %s\n%s", key, e, traceback.format_exc())
-            st.error("오류가 발생했습니다. 관리자에게 문의해 주세요.")
-    return _render
-
 def make_proc_page_func(key, name, icon):
     def _render():
         render_back_button(page_home_obj)
@@ -1121,12 +738,10 @@ def make_proc_page_func(key, name, icon):
 # ══════════════════════════════════════════════════════════
 page_home_obj = st.Page(render_home, title="홈", url_path="home", default=True)
 
-kpi_page_objs  = [st.Page(make_kpi_page_func(k, n, i),  title=n, url_path=k) for k, n, i in KPI_SUBMENUS]
 proc_page_objs = [st.Page(make_proc_page_func(k, n, i), title=n, url_path=k) for k, n, i in PROCESS_SUBMENUS]
 
 pages = {
     "메인": [page_home_obj],
-    "KPI 상세": kpi_page_objs,
     "공정 관리 상세": proc_page_objs,
 }
 
