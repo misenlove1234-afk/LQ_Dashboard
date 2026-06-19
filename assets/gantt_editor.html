@@ -112,6 +112,19 @@ body {
   color: #fca5a5; font-weight: 700;
 }
 
+/* ── Deck 구역 경계선 (구역 첫 행 상단에 굵은 구분선) ── */
+.excel-gantt tbody tr.area-top-row td {
+  border-top: 2px solid rgba(56,189,248,0.45) !important;
+}
+/* 선외(Outside) 구역 첫 행 — 주황색 구분선 */
+.excel-gantt tbody tr.area-top-row.outside-top-row td {
+  border-top: 2px solid rgba(249,115,22,0.55) !important;
+}
+/* 일반 셀 경계선은 아주 옅게 (내부 그리드 노이즈 최소화) */
+.excel-gantt tbody td:not(.bar):not(.area-cell) {
+  border-color: rgba(56,189,248,0.05) !important;
+}
+
 /* ── 작업 막대 ── */
 .excel-gantt td.bar {
   color: #0a1628 !important; font-weight: 700;
@@ -303,9 +316,10 @@ function sortAreas(areas) {
   const SIDE_ORDER = { 'P': 0, 'C': 1, 'S': 2 };
 
   // 선외(Outside) 구역 판별 — 키워드 포함 여부
+  // 구역명 예: 'In/Outside', 'Outside', '선외' 등
   const isOutside = (n) => {
-    const l = n.toLowerCase();
-    return l.includes('outside') || l.includes('선외') || l === '외부' || l === '외';
+    const l = n.toLowerCase().replace(/[\s\-]/g, '');
+    return l.includes('outside') || l.includes('선외') || l === '외부' || l === '외' || l === 'in/outside';
   };
 
   const getCategory = (n) => {
@@ -472,12 +486,16 @@ function render() {
   groups.forEach(group => {
     const lanes = groupLanes[group];
     lanes.forEach((lane, laneIdx) => {
-      html += '<tr>';
+      // 구역 첫 행: Deck 경계 구분선 클래스 부여
+      const isOutGroup = (() => {
+        const l = group.toLowerCase().replace(/[\s\-]/g, '');
+        return l.includes('outside') || l.includes('선외') || l === '외부' || l === '외' || l === 'in/outside';
+      })();
+      const trTopClass = laneIdx === 0
+        ? (isOutGroup ? ' class="area-top-row outside-top-row"' : ' class="area-top-row"')
+        : '';
+      html += `<tr${trTopClass}>`;
       if (laneIdx === 0) {
-        const isOutGroup = (() => {
-          const l = group.toLowerCase();
-          return l.includes('outside') || l.includes('선외') || l === '외부' || l === '외';
-        })();
         const areaCellClass = isOutGroup ? 'area-cell outside-row' : 'area-cell';
 
         let headerHtml;
