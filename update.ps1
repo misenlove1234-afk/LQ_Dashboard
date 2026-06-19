@@ -6,9 +6,13 @@
     GitHub 에서 다운로드한 ZIP 파일과 로컬 프로젝트를 비교하여
     변경된 파일만 대치합니다. 로컬 전용 파일(.env 등)은 삭제하지 않습니다.
 .HOW TO USE
-    1. GitHub 저장소 페이지에서 Code → Download ZIP 클릭
-    2. ZIP 파일이 Downloads 폴더에 저장되면 update.bat 실행
+    방법 1) ZIP 파일을 update.bat 아이콘 위에 드래그 앤 드랍
+    방법 2) update.bat 를 더블클릭 → Downloads 폴더에서 자동 탐색
 #>
+param(
+    # 드래그 앤 드랍으로 전달되는 ZIP 파일 경로 (비어 있으면 Downloads 자동 탐색)
+    [string]$ZipPath = ""
+)
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -18,7 +22,7 @@ $ErrorActionPreference = "Stop"
 # [설정] 필요 시 수정
 # ══════════════════════════════════════════════════
 
-# Downloads 폴더에서 찾을 ZIP 파일명 패턴
+# Downloads 폴더 자동 탐색 시 사용할 파일명 패턴
 $ZIP_PATTERN = "LQ_Dashboard*.zip"
 
 # 업데이트 시 건너뛸 경로 패턴 (정규식, 대소문자 무시)
@@ -65,35 +69,56 @@ Write-Host ("═" * 42) -ForegroundColor Cyan
 Write-Host ""
 
 # ══════════════════════════════════════════════════
-# ZIP 파일 탐색
+# ZIP 파일 결정 (드래그 앤 드랍 우선, 없으면 Downloads 탐색)
 # ══════════════════════════════════════════════════
-$zips = @(Get-ChildItem "$DOWNLOADS\$ZIP_PATTERN" -ErrorAction SilentlyContinue |
-          Sort-Object LastWriteTime -Descending)
-
-if ($zips.Count -eq 0) {
-    Write-Host "오류: Downloads 폴더에서 '$ZIP_PATTERN' 파일을 찾지 못했습니다." -ForegroundColor Red
-    Write-Host ""
-    Write-Host "해결 방법:" -ForegroundColor Yellow
-    Write-Host "  GitHub 저장소 → Code → Download ZIP 으로 파일을 다운로드하세요."
-    Write-Host "  파일명 예시: LQ_Dashboard-main.zip"
-    Write-Host ""
-    exit 1
-}
-
-$zip = $zips[0]
-
-if ($zips.Count -gt 1) {
-    Write-Host "ZIP 파일 ${$zips.Count}개 발견 — 가장 최신 파일 사용:" -ForegroundColor Yellow
-    foreach ($z in $zips) {
-        $marker = if ($z.FullName -eq $zip.FullName) { "▶ " } else { "   " }
-        $age    = if ($z.FullName -eq $zip.FullName) { "" } else { " (건너뜀)" }
-        Write-Host "  $marker$($z.Name)$age"
+if ($ZipPath) {
+    # ── 드래그 앤 드랍으로 파일이 지정된 경우 ──
+    if (-not (Test-Path $ZipPath)) {
+        Write-Host "오류: 파일을 찾을 수 없습니다." -ForegroundColor Red
+        Write-Host "  경로: $ZipPath" -ForegroundColor DarkGray
+        exit 1
     }
-    Write-Host ""
+    if (-not $ZipPath.ToLower().EndsWith('.zip')) {
+        Write-Host "오류: ZIP 파일(.zip)만 지원합니다." -ForegroundColor Red
+        Write-Host "  전달된 파일: $(Split-Path $ZipPath -Leaf)" -ForegroundColor DarkGray
+        exit 1
+    }
+    $zip = Get-Item $ZipPath
+    Write-Host "모드          : 드래그 앤 드랍" -ForegroundColor Cyan
+} else {
+    # ── 직접 실행 — Downloads 폴더에서 자동 탐색 ──
+    Write-Host "모드          : 자동 탐색 (Downloads)" -ForegroundColor DarkGray
+
+    $zips = @(Get-ChildItem "$DOWNLOADS\$ZIP_PATTERN" -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime -Descending)
+
+    if ($zips.Count -eq 0) {
+        Write-Host ""
+        Write-Host "오류: Downloads 폴더에서 '$ZIP_PATTERN' 파일을 찾지 못했습니다." -ForegroundColor Red
+        Write-Host ""
+        Write-Host "사용 방법:" -ForegroundColor Yellow
+        Write-Host "  방법 1) ZIP 파일을 update.bat 아이콘 위에 드래그 앤 드랍"
+        Write-Host "  방법 2) GitHub → Code → Download ZIP 후 update.bat 실행"
+        Write-Host "          (파일명 예시: LQ_Dashboard-main.zip)"
+        Write-Host ""
+        exit 1
+    }
+
+    $zip = $zips[0]
+
+    if ($zips.Count -gt 1) {
+        Write-Host "ZIP 파일 $($zips.Count)개 발견 — 가장 최신 파일 사용:" -ForegroundColor Yellow
+        foreach ($z in $zips) {
+            $marker = if ($z.FullName -eq $zip.FullName) { "▶ " } else { "   " }
+            $suffix = if ($z.FullName -eq $zip.FullName) { "" } else { " (건너뜀)" }
+            Write-Host "  $marker$($z.Name)$suffix"
+        }
+        Write-Host ""
+    }
 }
 
-Write-Host "대상 폴더 : $TARGET"
-Write-Host "ZIP 파일  : $($zip.FullName)"
+Write-Host "대상 폴더     : $TARGET"
+Write-Host "ZIP 파일      : $($zip.FullName)"
 
 # ══════════════════════════════════════════════════
 # ZIP 압축 해제 (임시 폴더)
