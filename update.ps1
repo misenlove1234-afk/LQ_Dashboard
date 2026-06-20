@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     LQ All In One - GitHub ZIP 자동 업데이트 스크립트
