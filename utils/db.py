@@ -7,6 +7,8 @@ DB 연결 유틸리티 - SQL Server
 """
 
 import urllib.parse
+import logging
+import traceback
 
 import streamlit as st
 import pandas as pd
@@ -14,6 +16,8 @@ from sqlalchemy import create_engine
 import pyodbc
 import os
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 # ── .env 파일 로드 ────────────────────────────────────────
 load_dotenv("/etc/lq/.env.dev")
@@ -87,9 +91,9 @@ def run_query(sql: str, params=None, database=None):
             engine = get_engine(database)
             with engine.connect() as conn:
                 return pd.read_sql(sql, conn, params=params)
-        except Exception:
-            st.error("오류가 발생했습니다. 관리자에게 문의해 주세요.")
-            return pd.DataFrame()
+        except Exception as e:
+            logger.error("DB 쿼리 오류: %s\n%s", e, traceback.format_exc())
+            raise
 
 
 # ── 편의 함수: INSERT / UPDATE / DELETE ──────────────────
@@ -170,16 +174,13 @@ def run_dm_query(sql: str) -> pd.DataFrame:
     예시:
         df = run_dm_query("SELECT * FROM CRCVW_SYARD_MC_A2_CD_CNFM WHERE CNST_WK_CENT = '1J67400'")
     """
-    import logging, traceback
-    logger = logging.getLogger(__name__)
     conn = None
     try:
         conn = get_dm_connection()
         return pd.read_sql(sql, conn)
     except Exception as e:
         logger.error("Azure DM 쿼리 오류: %s\n%s", e, traceback.format_exc())
-        st.error("오류가 발생했습니다. 관리자에게 문의해 주세요.")
-        return pd.DataFrame()
+        raise
     finally:
         if conn:
             conn.close()
