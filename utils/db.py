@@ -9,18 +9,26 @@ DB 연결 유틸리티 - SQL Server
 import urllib.parse
 import logging
 import traceback
+import os
+from pathlib import Path
 
 import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine
 import pyodbc
-import os
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
-# ── .env 파일 로드 ────────────────────────────────────────
-load_dotenv("/etc/lq/.env.dev")
+# ── .env 파일 로드 (프로젝트 루트 우선, 없으면 리눅스 서버 경로) ─
+_ENV_CANDIDATES = [
+    Path(__file__).parent.parent / ".env",   # Windows 로컬: 프로젝트 루트
+    Path("/etc/lq/.env.dev"),                 # Linux 서버
+]
+for _env_path in _ENV_CANDIDATES:
+    if _env_path.exists():
+        load_dotenv(_env_path)
+        break
 
 
 # ── 공통 접속 정보 ────────────────────────────────────────
