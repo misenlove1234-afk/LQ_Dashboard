@@ -82,7 +82,7 @@ body {
 .excel-gantt th, .excel-gantt td {
   border: 1px solid rgba(56,189,248,0.10);
   padding: 0; text-align: center; vertical-align: middle;
-  height: 15px; min-width: 20px; max-width: 20px;
+  height: 15px; min-width: 24px; max-width: 24px;
   overflow: hidden; white-space: nowrap;
 }
 .excel-gantt .area-cell {
@@ -236,6 +236,37 @@ const ganttData         = /*__GANTT_DATA__*/[];
 const ganttDataOriginal = JSON.parse(JSON.stringify(ganttData));
 const TODAY             = '__TODAY_DATE__';
 const IS_EDITABLE       = __IS_EDITABLE__;
+
+// 대한민국 공휴일 (2024-2027) — 토요일과 동일한 색 처리
+const HOLIDAYS = new Set([
+  // ─ 고정 공휴일 ─
+  '2024-01-01','2024-03-01','2024-05-05','2024-06-06','2024-08-15','2024-10-03','2024-10-09','2024-12-25',
+  '2025-01-01',
+  '2025-03-01','2025-03-03',   // 삼일절 대체 (3/1=토→3/3=월)
+  '2025-05-05','2025-05-06',   // 어린이날 + 부처님오신날 대체
+  '2025-06-06','2025-08-15','2025-10-03','2025-10-09','2025-12-25',
+  '2026-01-01',
+  '2026-03-01','2026-03-02',   // 삼일절 대체 (3/1=일→3/2=월)
+  '2026-05-05','2026-06-06',
+  '2026-08-15','2026-08-17',   // 광복절 대체 (8/15=토→8/17=월)
+  '2026-10-03','2026-10-05',   // 개천절 대체 (10/3=토→10/5=월)
+  '2026-10-09','2026-12-25',
+  '2027-01-01','2027-03-01','2027-05-05','2027-06-06','2027-08-15','2027-10-03','2027-10-09','2027-12-25',
+  // ─ 설날 (전날·당일·다음날) ─
+  '2024-02-09','2024-02-10','2024-02-11',
+  '2025-01-28','2025-01-29','2025-01-30',
+  '2026-02-16','2026-02-17','2026-02-18',
+  '2027-02-06','2027-02-07','2027-02-08',
+  // ─ 부처님오신날 ─
+  '2024-05-15',
+  '2026-05-24',
+  '2027-05-13',
+  // ─ 추석 (전날·당일·다음날) ─
+  '2024-09-16','2024-09-17','2024-09-18',
+  '2025-10-05','2025-10-06','2025-10-07','2025-10-08',
+  '2026-09-24','2026-09-25','2026-09-26',
+  '2027-09-14','2027-09-15','2027-09-16',
+]);
 const CURRENT_USER      = '__CURRENT_USER__';
 const ROW_MODE          = '__ROW_MODE__';  // 'area' | 'ship'
 
@@ -449,8 +480,13 @@ function render() {
   dates.forEach((d,i) => { dateIndex[_dateKey(d)] = i; });
 
   // 그룹별 레인 분배 (겹치면 별도 레인)
+  // ELEVATOR / 중앙계단 / STAIRWAY 계열은 최대 2행으로 제한
   const groupLanes = {};
   groups.forEach(g => {
+    const _gLower = g.toLowerCase().replace(/[\s\-_]/g, '');
+    const maxLanes = (_gLower.includes('elevator') || _gLower.includes('중앙계단') ||
+                      _gLower.includes('계단') || _gLower.includes('stairway')) ? 2 : Infinity;
+
     const tasks = visibleData.filter(t => t[groupKey] === g);
     tasks.sort((x,y) => _parseLocalDate(x.s) - _parseLocalDate(y.s));
     const lanes = [];
@@ -458,7 +494,6 @@ function render() {
       let placed = false;
       for (const lane of lanes) {
         // 가장 늦게 끝나는 task 의 종료일을 기준으로 비교
-        // (정렬은 시작일 기준이므로 마지막 push 가 가장 늦은 종료일이 아닐 수 있음)
         let laneMaxEndTs = -Infinity;
         for (const t of lane) {
           const ts = _parseLocalDate(t.e).getTime();
@@ -469,7 +504,13 @@ function render() {
           lane.push(task); placed = true; break;
         }
       }
-      if (!placed) lanes.push([task]);
+      if (!placed) {
+        if (lanes.length < maxLanes) {
+          lanes.push([task]);
+        } else {
+          lanes[lanes.length - 1].push(task); // 최대 레인 초과분 → 마지막 레인에 병합
+        }
+      }
     });
     groupLanes[g] = lanes;
   });
@@ -499,7 +540,7 @@ function render() {
     const day = d.getDay();
     const dstr = _dateKey(d);
     const cls = [];
-    if (day === 6) cls.push('saturday');
+    if (day === 6 || HOLIDAYS.has(dstr)) cls.push('saturday');
     if (dstr === TODAY) cls.push('today');
     html += `<th class="${cls.join(' ')}">${String(d.getDate()).padStart(2,'0')}</th>`;
   });
@@ -511,7 +552,7 @@ function render() {
     const day = d.getDay();
     const dstr = _dateKey(d);
     const cls = [];
-    if (day === 6) cls.push('saturday');
+    if (day === 6 || HOLIDAYS.has(dstr)) cls.push('saturday');
     if (dstr === TODAY) cls.push('today');
     html += `<th class="${cls.join(' ')}">${WEEKDAYS[day]}</th>`;
   });
@@ -558,7 +599,7 @@ function render() {
           const d = dates[cursor];
           const dstr = _dateKey(d);
           const cls = [];
-          if (d.getDay() === 6) cls.push('saturday');
+          if (d.getDay() === 6 || HOLIDAYS.has(dstr)) cls.push('saturday');
           if (dstr === TODAY) cls.push('today');
           html += `<td class="${cls.join(' ')}" data-date="${dstr}" data-area="${group}" data-lane="${laneIdx}"></td>`;
           cursor++;
@@ -615,7 +656,7 @@ function render() {
         const d = dates[cursor];
         const dstr = _dateKey(d);
         const cls = [];
-        if (d.getDay() === 6) cls.push('saturday');
+        if (d.getDay() === 6 || HOLIDAYS.has(dstr)) cls.push('saturday');
         if (dstr === TODAY) cls.push('today');
         html += `<td class="${cls.join(' ')}" data-date="${dstr}" data-area="${group}" data-lane="${laneIdx}"></td>`;
         cursor++;
