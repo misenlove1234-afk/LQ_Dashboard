@@ -1317,10 +1317,53 @@ def render():
         else:
             _render_gantt_component(
                 mtg_gantt_tasks,
-                is_editable=False,
+                is_editable=is_editable,
                 current_user=current_user,
                 height=900,
                 row_mode="area",
                 wrap_max_height="calc(100vh - 290px)",
                 template="gantt_meeting.html",
             )
+
+        # ── 변경 내역 DB 반영 (편집 권한자만) ──────────────────────
+        if is_editable:
+            st.markdown('<hr style="border-color:rgba(56,189,248,0.15);">', unsafe_allow_html=True)
+            with st.expander("📥 변경 내역 DB 반영", expanded=False):
+                st.caption("간트에서 [💾 저장] 시 다운로드된 JSON 파일을 여기에 업로드하세요.")
+                col_a, col_b = st.columns([2, 1])
+                with col_a:
+                    uploaded_mtg = st.file_uploader(
+                        "변경 JSON 업로드", type=['json'], key="proc2_mtg_gantt_upload"
+                    )
+                with col_b:
+                    memo_input_mtg = st.text_input(
+                        "회의 메모", key="proc2_mtg_gantt_memo",
+                        placeholder="예: 6/21 공정회의"
+                    )
+                if uploaded_mtg and st.button("💾 DB 반영", key="proc2_mtg_gantt_apply", type="primary"):
+                    try:
+                        changes = json.load(uploaded_mtg)
+                        if not isinstance(changes, list) or not changes:
+                            st.warning("⚠️ 업로드된 파일에 변경 내역이 없습니다.")
+                        else:
+                            with st.spinner(f"{len(changes)}건 저장 중..."):
+                                result = save_gantt_changes(
+                                    changes=changes,
+                                    user_name=current_user,
+                                    memo=memo_input_mtg or None,
+                                )
+                            if result['failed'] == 0:
+                                st.success(
+                                    f"✅ {result['success']}건 저장 완료! "
+                                    f"(lq_proc2_2 이력 기록 포함)"
+                                )
+                                st.cache_data.clear()
+                                st.rerun()
+                            else:
+                                st.warning(
+                                    f"⚠️ 성공 {result['success']}건 / 실패 {result['failed']}건"
+                                )
+                                st.json(result['errors'])
+                    except Exception as e:
+                        logger.error("공정회의 JSON 파싱 오류: %s\n%s", e, traceback.format_exc())
+                        st.error("저장 데이터 처리 중 오류가 발생했습니다.")
