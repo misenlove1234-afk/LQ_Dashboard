@@ -720,7 +720,7 @@ def render():
                     '실적 진도율': (proj_df[proj_df['실적_C_종료'].notna()]['점유율'].sum() / tw) * 100,
                 })
         if project_progress:
-            ppdf = pd.DataFrame(project_progress)
+            ppdf = pd.DataFrame(project_progress).sort_values('계획 진도율').reset_index(drop=True)
             fig_proj = go.Figure()
             fig_proj.add_trace(go.Bar(name='계획 진도율',
                 x=ppdf['프로젝트'], y=ppdf['계획 진도율'],
