@@ -21,7 +21,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: "Malgun Gothic", "맑은 고딕", -apple-system, sans-serif;
-  background: #0a1628;
+  background: #112240;
   color: #e2e8f0;
   padding: 12px;
 }
@@ -45,8 +45,8 @@ body {
 .gantt-wrap {
   position: relative;  /* 드래그 프리뷰 오버레이를 위해 필요 */
   overflow-x: auto; overflow-y: auto;
-  background: #0d1f3c;
-  border: 1px solid rgba(56,189,248,0.2);
+  background: #1a2f4a;
+  border: 1px solid rgba(56,189,248,0.25);
   border-radius: 8px;
   max-height: 640px;
 }
@@ -77,13 +77,13 @@ body {
   font-family: 'Malgun Gothic', monospace;
   font-size: 10.5px;
   color: #e2e8f0;
-  background: #0d1f3c;
+  background: #1a2f4a;
   table-layout: fixed;
 }
 .excel-gantt th, .excel-gantt td {
   border: 1px solid rgba(56,189,248,0.10);
   padding: 0; text-align: center; vertical-align: middle;
-  height: 15px; min-width: 20px; max-width: 20px;
+  height: 30px; min-width: 32px; max-width: 32px;
   overflow: hidden; white-space: nowrap;
 }
 .excel-gantt .area-cell {
@@ -101,8 +101,8 @@ body {
 }
 .excel-gantt thead th.area-cell { z-index: 10; background: #0a1628; }
 .excel-gantt thead tr:nth-child(1) th { top: 0; }
-.excel-gantt thead tr:nth-child(2) th { top: 15px; }
-.excel-gantt thead tr:nth-child(3) th { top: 30px; }
+.excel-gantt thead tr:nth-child(2) th { top: 30px; }
+.excel-gantt thead tr:nth-child(3) th { top: 60px; }
 
 .excel-gantt td.saturday, .excel-gantt th.saturday {
   background: rgba(253,224,71,0.12) !important;
@@ -114,11 +114,11 @@ body {
 
 /* ── Deck 구역 경계선 (구역 첫 행 상단에 굵은 구분선) ── */
 .excel-gantt tbody tr.area-top-row td {
-  border-top: 2px solid rgba(56,189,248,0.45) !important;
+  border-top: 3px solid #38bdf8 !important;
 }
 /* 선외(Outside) 구역 첫 행 — 주황색 구분선 */
 .excel-gantt tbody tr.area-top-row.outside-top-row td {
-  border-top: 2px solid rgba(249,115,22,0.55) !important;
+  border-top: 3px solid #fb923c !important;
 }
 /* 일반 셀 경계선은 아주 옅게 (내부 그리드 노이즈 최소화) */
 .excel-gantt tbody td:not(.bar):not(.area-cell) {
@@ -146,11 +146,16 @@ body {
 .excel-gantt td.bar.bar-inside  { border-left: 2px solid #3b82f6 !important; }
 .excel-gantt td.bar.bar-outside { border-left: 2px solid #f97316 !important; }
 
-/* 선외 행 area-cell 강조 */
+/* 선외 행 area-cell 강조 — 불투명 */
 .excel-gantt .area-cell.outside-row {
-  color: #fb923c !important;
-  background: rgba(249,115,22,0.08) !important;
-  border-right: 2px solid rgba(249,115,22,0.4) !important;
+  color: #fff7ed !important;
+  background: rgba(194,65,12,0.85) !important;
+  border-right: 3px solid #fb923c !important;
+}
+
+/* In/Outside 영향 범위 — DK 구역 배경 하이라이트 (20% 가시도, 거의 투명) */
+.excel-gantt td.inout-hl:not(.bar) {
+  background: rgba(249,115,22,0.20) !important;
 }
 
 /* ── 막대 색상은 JavaScript에서 동적 배정 (공종=톤, 작업내용=개별 색) ── */
@@ -413,28 +418,24 @@ function render() {
   const dateIndex = {};
   dates.forEach((d,i) => { dateIndex[_dateKey(d)] = i; });
 
-  // 그룹별 레인 분배 (겹치면 별도 레인)
+  // 그룹별 레인 분배 — 구역당 3행 고정, 1작업=1행
+  const LANES_PER_GROUP = 3;
   const groupLanes = {};
   groups.forEach(g => {
     const tasks = ganttData.filter(t => t[groupKey] === g);
     tasks.sort((x,y) => _parseLocalDate(x.s) - _parseLocalDate(y.s));
-    const lanes = [];
+    const lanes = [[], [], []];
     tasks.forEach(task => {
-      let placed = false;
-      for (const lane of lanes) {
-        // 가장 늦게 끝나는 task 의 종료일을 기준으로 비교
-        // (정렬은 시작일 기준이므로 마지막 push 가 가장 늦은 종료일이 아닐 수 있음)
+      for (let i = 0; i < LANES_PER_GROUP; i++) {
         let laneMaxEndTs = -Infinity;
-        for (const t of lane) {
+        for (const t of lanes[i]) {
           const ts = _parseLocalDate(t.e).getTime();
           if (ts > laneMaxEndTs) laneMaxEndTs = ts;
         }
-        // 종료일 == 시작일 이어도 같은 컬럼을 공유할 수 없으므로 strict (>)
-        if (_parseLocalDate(task.s).getTime() > laneMaxEndTs) {
-          lane.push(task); placed = true; break;
+        if (laneMaxEndTs === -Infinity || _parseLocalDate(task.s).getTime() > laneMaxEndTs) {
+          lanes[i].push(task); break;
         }
       }
-      if (!placed) lanes.push([task]);
     });
     groupLanes[g] = lanes;
   });
@@ -538,7 +539,6 @@ function render() {
         if (span < 1) span = 1;
 
         const barColor  = colorMap[task.task] || '#94a3b8';
-        const labelSize = span < 2 ? '7px' : span < 4 ? '8.5px' : '10px';
         // 호선 모드: "작업내용 / 구역", 구역 모드: "작업내용"
         const labelText = ROW_MODE === 'ship'
           ? `${task.task} / ${task.area}`
@@ -555,7 +555,7 @@ function render() {
         const mgr = (task.manager || '').trim();
         const mgrSuffix = mgr && span >= 8 ? ` · ${mgr}` : '';
 
-        const label = `<span style="font-size:${labelSize};">${ioBadge}${labelText}${mgrSuffix}</span>`;
+        const label = `<span style="font-size:10px;">${ioBadge}${labelText}${mgrSuffix}</span>`;
 
         // 툴팁 — 선내/외, 담당자, 진행상태 추가
         const extraLines = [
@@ -605,6 +605,8 @@ function render() {
   updatePendingPanel();
   // 렌더 직후 오늘 날짜 셀이 가로 중앙에 오도록 스크롤
   scrollToToday();
+  // In/Outside → NAV-DK~UPP-DK 범위 배경 하이라이트
+  renderInOutsideOverlays();
 }
 
 // ══════════════════════════════════════════════
@@ -621,6 +623,54 @@ function scrollToToday() {
   const cellRect = todayCell.getBoundingClientRect();
   const cellCenterInWrap = (cellRect.left - wrapRect.left) + wrap.scrollLeft + (cellRect.width / 2);
   wrap.scrollLeft = cellCenterInWrap - (wrap.clientWidth / 2);
+}
+
+// ══════════════════════════════════════════════
+// In/Outside → NAV-DK ~ UPP-DK 범위 배경 하이라이트
+// ══════════════════════════════════════════════
+function renderInOutsideOverlays() {
+  document.querySelectorAll('#gantt-grid .inout-hl').forEach(el => {
+    el.classList.remove('inout-hl');
+  });
+
+  const outsideAreaCells = document.querySelectorAll('#gantt-grid td.area-cell.outside-row');
+  if (!outsideAreaCells.length) return;
+
+  const outsideRanges = [];
+  outsideAreaCells.forEach(areaCell => {
+    const rowspan = parseInt(areaCell.getAttribute('rowspan') || '1', 10);
+    let tr = areaCell.closest('tr');
+    for (let i = 0; i < rowspan; i++) {
+      if (!tr) break;
+      tr.querySelectorAll('td.bar').forEach(bar => {
+        const s = bar.dataset.start, e = bar.dataset.end;
+        if (s && e) outsideRanges.push({ start: s, end: e });
+      });
+      tr = tr.nextElementSibling;
+    }
+  });
+  if (!outsideRanges.length) return;
+
+  const DK_TARGETS = ['NAV-DK','UPP-DK','A-DK','B-DK','C-DK','D-DK','E-DK','F-DK'];
+  document.querySelectorAll('#gantt-grid td.area-cell').forEach(areaCell => {
+    const nm = areaCell.textContent.trim().split('\n')[0].trim();
+    if (!DK_TARGETS.some(dk => nm === dk || nm.startsWith(dk + ' '))) return;
+    const rowspan = parseInt(areaCell.getAttribute('rowspan') || '1', 10);
+    let tr = areaCell.closest('tr');
+    for (let i = 0; i < rowspan; i++) {
+      if (!tr) break;
+      tr.querySelectorAll('td[data-date]').forEach(cell => {
+        const cd = cell.dataset.date;
+        for (const r of outsideRanges) {
+          if (cd >= r.start && cd <= r.end) {
+            cell.classList.add('inout-hl');
+            break;
+          }
+        }
+      });
+      tr = tr.nextElementSibling;
+    }
+  });
 }
 
 // ══════════════════════════════════════════════

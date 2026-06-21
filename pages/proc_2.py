@@ -1180,43 +1180,20 @@ def render():
             len(mtg_projects) - 1
         ))
 
-        # ── 컨트롤 바 (프로젝트 네비게이터 + 기간 선택) ──────────
-        c_prev, c_sel, c_next, c_period = st.columns([1, 4, 1, 5])
-
-        with c_prev:
-            if st.button("◀ 이전", key="proc2_mtg_prev",
-                         use_container_width=True, disabled=(cur_idx == 0)):
-                st.session_state["proc2_mtg_proj_idx"] = cur_idx - 1
-                st.rerun()
-
+        # ── 컨트롤 바 (호선 선택) ──────────
         def _on_mtg_proj_change():
             val = st.session_state.get("proc2_mtg_proj_sel")
             if val in mtg_projects:
                 st.session_state["proc2_mtg_proj_idx"] = mtg_projects.index(val)
                 st.session_state["proc2_mtg_stg_sel"] = None
 
-        with c_sel:
-            mtg_proj = st.selectbox(
-                "호선", mtg_projects, index=cur_idx,
-                key="proc2_mtg_proj_sel",
-                on_change=_on_mtg_proj_change,
-                label_visibility="collapsed",
-            )
+        mtg_proj = st.selectbox(
+            "호선 선택", mtg_projects, index=cur_idx,
+            key="proc2_mtg_proj_sel",
+            on_change=_on_mtg_proj_change,
+        )
 
-        with c_next:
-            if st.button("다음 ▶", key="proc2_mtg_next",
-                         use_container_width=True,
-                         disabled=(cur_idx >= len(mtg_projects) - 1)):
-                st.session_state["proc2_mtg_proj_idx"] = cur_idx + 1
-                st.rerun()
-
-        with c_period:
-            mtg_period = st.radio(
-                "기간", ["이번달", "+1개월", "+3개월", "전체기간"],
-                horizontal=True, index=1,
-                key="proc2_mtg_period",
-                label_visibility="collapsed",
-            )
+        mtg_period = "전체기간"  # 항상 전체기간 고정
 
         # 현재 프로젝트 기록 (다음 렌더 시 변경 감지용)
         st.session_state["proc2_mtg_last_proj"] = mtg_proj
@@ -1260,10 +1237,8 @@ def render():
             mtg_df[mtg_df['실적_C_착수'].notna() & mtg_df['실적_C_종료'].isna()].shape[0]
             if '실적_C_착수' in mtg_df.columns else 0
         )
-        _proj_pos = f"{cur_idx + 1} / {len(mtg_projects)}"
-
         kc = st.columns(6)
-        with kc[0]: st.metric("호선", f"{mtg_proj}  ({_proj_pos})")
+        with kc[0]: st.metric("호선", mtg_proj)
         with kc[1]: st.metric("변경 계획 진도율", f"{_plan_p:.1f}%")
         with kc[2]:
             delta_p = _act_p - _plan_p
