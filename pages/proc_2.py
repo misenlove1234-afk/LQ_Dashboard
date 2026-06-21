@@ -395,14 +395,18 @@ def render():
 
         # STG
         st.write("3. STG (미선택 시 전체)")
-        all_stgs = sorted(df_raw['STG'].astype(str).unique())
-        selected_stgs = []
-        cols_stg = st.columns(min(4, len(all_stgs)))
-        for idx, stg in enumerate(all_stgs):
-            with cols_stg[idx % len(cols_stg)]:
-                if st.checkbox(stg, value=False, key=f"proc2_stg_{stg}"):
-                    selected_stgs.append(stg)
-        stgs_filter = selected_stgs if selected_stgs else all_stgs
+        if 'STG' in df_raw.columns:
+            all_stgs = sorted(df_raw['STG'].astype(str).unique())
+            selected_stgs = []
+            cols_stg = st.columns(min(4, len(all_stgs)))
+            for idx, stg in enumerate(all_stgs):
+                with cols_stg[idx % len(cols_stg)]:
+                    if st.checkbox(stg, value=False, key=f"proc2_stg_{stg}"):
+                        selected_stgs.append(stg)
+            stgs_filter = selected_stgs if selected_stgs else all_stgs
+        else:
+            all_stgs = []
+            stgs_filter = []
 
         # 완료 포함
         st.write("4. 프로젝트 조회 기준")
