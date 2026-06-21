@@ -163,12 +163,14 @@ def _draw_ship_layout(layout_list, delay_by_area, title, is_split=False):
 def _render_gantt_component(tasks: list, is_editable: bool = False,
                              current_user: str = "", height: int = 900,
                              row_mode: str = "area",
-                             wrap_max_height: str = "520px"):
-    """assets/gantt_editor.html 템플릿에 데이터를 주입해 컴포넌트로 렌더링
+                             wrap_max_height: str = "520px",
+                             template: str = "gantt_editor.html"):
+    """간트 HTML 템플릿에 데이터를 주입해 컴포넌트로 렌더링
     row_mode: 'area' (구역별) | 'ship' (호선별)
     wrap_max_height: .gantt-wrap 영역 최대 높이 CSS 값 (기본 520px, 최대화 시 viewport 기준)
+    template: 사용할 HTML 파일명 (기본 gantt_editor.html, 공정회의 모드는 gantt_meeting.html)
     """
-    html_path = Path(__file__).parent.parent / "assets" / "gantt_editor.html"
+    html_path = Path(__file__).parent.parent / "assets" / template
     if not html_path.exists():
         st.error(f"❌ 간트 HTML 템플릿을 찾을 수 없습니다: {html_path}")
         return
@@ -1320,4 +1322,5 @@ def render():
                 height=900,
                 row_mode="area",
                 wrap_max_height="calc(100vh - 290px)",
+                template="gantt_meeting.html",
             )
