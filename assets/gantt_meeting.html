@@ -33,8 +33,8 @@
   --text-header: #000000;
   --text-month: #000000;
   --bg-row:     transparent;
-  --border-grid: rgba(56,189,248,0.40);
-  --border-area: rgba(56,189,248,0.70);
+  --border-grid: #ffffff;
+  --border-area: #ffffff;
   --holiday-bg: rgba(253,224,71,0.12);
   --today-bg:   rgba(244,63,94,0.18);
   --col-w:      24px;
@@ -54,8 +54,8 @@ body.light-theme {
   --text-header: #000000;
   --text-month: #000000;
   --bg-row:     #eff6ff;
-  --border-grid: rgba(0,0,0,0.30);
-  --border-area: rgba(0,0,0,0.50);
+  --border-grid: #000000;
+  --border-area: #000000;
   --holiday-bg: rgba(202,138,4,0.20);
   --today-bg:   rgba(220,38,38,0.22);
   --separator-color:   #1d4ed8;
@@ -84,15 +84,7 @@ body {
   font-size: 0.85rem; color: #e2e8f0;
 }
 
-/* ── 컨트롤 버튼 행 — 상단 고정 ── */
-#ctrl-row {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  background: var(--bg-body);
-  padding-bottom: 5px;
-  border-bottom: 1px solid var(--border-area);
-}
+/* ctrl-row 제거됨 — 컨트롤은 Streamlit 네이티브 UI로 이동 */
 
 /* ── 그리드 컨테이너 ── */
 .gantt-wrap {
@@ -140,36 +132,39 @@ body {
   overflow: hidden; white-space: nowrap;
 }
 .excel-gantt .area-cell {
-  background: var(--bg-area); color: var(--text-area); font-weight: 700;
+  background: var(--bg-area); color: #000000 !important; font-weight: 700;
   text-align: center; padding: 2px 4px;
   min-width: 80px; max-width: 80px;
   position: sticky; left: 0; z-index: 5;
   border-right: 2px solid var(--border-area);
-  font-size: 14px;
+  font-size: 16px;
 }
 .excel-gantt thead th {
-  background: var(--bg-header); color: var(--text-header);
-  font-weight: 600; font-size: 12px; padding: 1px 0;
-  position: sticky; z-index: 4;
+  background: var(--bg-header);
+  color: #000000 !important; font-weight: 700; font-size: 16px; padding: 1px 0;
+  position: sticky; z-index: 15;
 }
-.excel-gantt thead th.area-cell { z-index: 10; background: var(--bg-area); }
+.excel-gantt thead th.area-cell { z-index: 20; background: var(--bg-area); }
 .excel-gantt th.month-hdr { background: var(--bg-month) !important; color: var(--text-month) !important; }
 .excel-gantt thead tr:nth-child(1) th { top: 40px; }
 .excel-gantt thead tr:nth-child(2) th { top: 70px; }
 .excel-gantt thead tr:nth-child(3) th { top: 100px; }
 
-/* 토요일/공휴일 — 데이터 셀은 투명, 헤더 셀만 황금 텍스트 + 옅은 배경 */
+/* 토요일/공휴일 — 헤더: 단색 황금, 데이터 셀: 동일 색상 50% 투명 */
 .excel-gantt td.saturday {
-  background: var(--bg-row) !important;  /* 일반 셀과 동일 — 어두움 없음 */
+  background: rgba(253,224,71,0.35) !important;
 }
 .excel-gantt th.saturday {
-  background: rgba(253,224,71,0.28) !important;
-  color: #92400e !important;  /* 진한 황금 텍스트 */
+  background: rgba(253,224,71,0.75) !important;
+  color: #78350f !important;
   font-weight: 700 !important;
 }
+body.light-theme .excel-gantt td.saturday {
+  background: rgba(202,138,4,0.25) !important;
+}
 body.light-theme .excel-gantt th.saturday {
-  background: rgba(253,224,71,0.55) !important;
-  color: #78350f !important;
+  background: rgba(202,138,4,0.65) !important;
+  color: #451a03 !important;
 }
 .excel-gantt td.today, .excel-gantt th.today {
   background: var(--today-bg) !important;
@@ -195,7 +190,7 @@ body.light-theme .excel-gantt th.saturday {
 .excel-gantt td.bar {
   color: #0a1628 !important; font-weight: 700;
   padding: 0 2px; font-size: 10px;
-  border: 2px solid rgba(0,0,0,0.40);
+  border: 2px solid var(--border-grid);
   cursor: move; text-overflow: ellipsis;
   position: relative; user-select: none;
 }
@@ -216,10 +211,10 @@ body.light-theme .excel-gantt th.saturday {
 .excel-gantt td.bar.bar-inside  { border-left: 2px solid #3b82f6 !important; }
 .excel-gantt td.bar.bar-outside { border-left: 2px solid #f97316 !important; }
 
-/* 선외 행 area-cell 강조 — 배경은 일반 area-cell과 동일하게 유지 */
+/* 선외 행 area-cell 강조 — 텍스트 검정, 우측 테두리 변수 적용 */
 .excel-gantt .area-cell.outside-row {
-  color: #fb923c !important;
-  border-right: 2px solid rgba(249,115,22,0.4) !important;
+  color: #000000 !important;
+  border-right: 2px solid var(--border-area) !important;
 }
 
 /* ── 막대 색상은 JavaScript에서 동적 배정 (공종=톤, 작업내용=개별 색) ── */
@@ -273,45 +268,7 @@ body.light-theme .excel-gantt th.saturday {
   📊 공정 타임라인 — 막대를 드래그하여 일정을 조정하세요
 </div>
 
-<!-- ── 컨트롤 버튼 행 ── -->
-<div id="ctrl-row" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:0.5rem;align-items:center;">
-  <button id="btn-toggle-hidden" onclick="toggleHidden()"
-    style="background:#162d50;color:#94a3b8;border:1px solid rgba(56,189,248,0.3);
-           padding:4px 12px;border-radius:4px;cursor:pointer;font-size:0.82rem;">
-    숨기기 활성화
-  </button>
-
-  <span style="color:#475569;font-size:0.78rem;margin-left:0.6rem;">열 폭:</span>
-  <button id="btn-col-sm" onclick="setColWidth(16)"
-    style="background:#162d50;color:#94a3b8;border:1px solid rgba(56,189,248,0.3);
-           padding:4px 9px;border-radius:4px;cursor:pointer;font-size:0.82rem;">좁게</button>
-  <button id="btn-col-md" onclick="setColWidth(24)"
-    style="background:#1e4a8c;color:#7dd3fc;border:1px solid rgba(56,189,248,0.5);
-           padding:4px 9px;border-radius:4px;cursor:pointer;font-size:0.82rem;font-weight:700;">보통</button>
-  <button id="btn-col-lg" onclick="setColWidth(36)"
-    style="background:#162d50;color:#94a3b8;border:1px solid rgba(56,189,248,0.3);
-           padding:4px 9px;border-radius:4px;cursor:pointer;font-size:0.82rem;">넓게</button>
-
-  <button id="btn-theme" onclick="toggleTheme()"
-    style="background:#162d50;color:#94a3b8;border:1px solid rgba(56,189,248,0.3);
-           padding:4px 12px;border-radius:4px;cursor:pointer;font-size:0.82rem;margin-left:0.6rem;">
-    ☀ 라이트 모드
-  </button>
-
-  <button id="btn-actuals" onclick="toggleActuals()"
-    style="background:#162d50;color:#94a3b8;border:1px solid rgba(56,189,248,0.3);
-           padding:4px 12px;border-radius:4px;cursor:pointer;font-size:0.82rem;">
-    실적 보기
-  </button>
-
-  <span style="color:#475569;font-size:0.78rem;margin-left:0.6rem;">이동:</span>
-  <button onclick="weekScroll(-1)"
-    style="background:#162d50;color:#94a3b8;border:1px solid rgba(56,189,248,0.3);
-           padding:4px 10px;border-radius:4px;cursor:pointer;font-size:0.82rem;">◀ 1주 전</button>
-  <button onclick="weekScroll(1)"
-    style="background:#162d50;color:#94a3b8;border:1px solid rgba(56,189,248,0.3);
-           padding:4px 10px;border-radius:4px;cursor:pointer;font-size:0.82rem;">1주 후 ▶</button>
-</div>
+<!-- ctrl-row 제거됨 — 컨트롤은 Streamlit 네이티브 UI로 이동 -->
 
 <!-- ── 그리드 ── -->
 <div id="gantt-wrap" class="gantt-wrap">
@@ -367,45 +324,30 @@ const ROW_MODE          = '__ROW_MODE__';  // 'area' | 'ship'
 // 변경 내역 누적
 let pendingChanges = [];
 
-// 숨기기 작업 표시 상태 (false: showFlag='Y'만 표시, true: 전체 표시)
-let showHidden = false;
+// ── Streamlit에서 주입되는 초기 상태 ──
+let showHidden   = __INIT_SHOW_HIDDEN__;    // true | false
+let COL_W        = __INIT_COL_WIDTH__;      // 16 | 24 | 36
+let FONT_SIZE_PX = COL_W <= 16 ? 13 : COL_W <= 24 ? 18 : 22;
+let isLightTheme = __INIT_LIGHT_THEME__;    // true | false
+let showActuals  = __INIT_SHOW_ACTUALS__;   // true | false
+const WEEK_OFFSET = __INIT_WEEK_OFFSET__;  // 주 단위 오프셋 (정수)
 
-// 열 폭 / 글씨 크기 상태
-let COL_W = 24;
-let FONT_SIZE_PX = 18;
-
-// 테마 / 실적 필터 상태
-let isLightTheme = false;
-let showActuals = false;
+// 초기 상태 적용 (Streamlit 주입값 기준)
+function initGanttState() {
+  document.documentElement.style.setProperty('--col-w', COL_W + 'px');
+  document.body.classList.toggle('light-theme', isLightTheme);
+}
 
 function toggleHidden() {
   showHidden = !showHidden;
-  const btn = document.getElementById('btn-toggle-hidden');
-  if (btn) {
-    btn.textContent    = showHidden ? '숨기기 비활성화' : '숨기기 활성화';
-    btn.style.color    = showHidden ? '#fbbf24' : '#94a3b8';
-    btn.style.borderColor = showHidden ? 'rgba(251,191,36,0.5)' : 'rgba(56,189,248,0.3)';
-    btn.style.background  = showHidden ? '#3d2a00' : '#162d50';
-  }
   render();
 }
 
-// 열 폭 3단계 전환
+// 열 폭 3단계 전환 (Streamlit 측 버튼에서 직접 호출 — HTML 내 버튼 없음)
 function setColWidth(w) {
   COL_W = w;
   FONT_SIZE_PX = w <= 16 ? 13 : w <= 24 ? 18 : 22;
   document.documentElement.style.setProperty('--col-w', w + 'px');
-  const sizes = [16, 24, 36];
-  const ids   = ['btn-col-sm', 'btn-col-md', 'btn-col-lg'];
-  ids.forEach((id, i) => {
-    const btn = document.getElementById(id);
-    if (!btn) return;
-    const active = sizes[i] === w;
-    btn.style.background  = active ? '#1e4a8c' : '#162d50';
-    btn.style.color       = active ? '#7dd3fc' : '#94a3b8';
-    btn.style.fontWeight  = active ? '700'     : '400';
-    btn.style.borderColor = active ? 'rgba(56,189,248,0.5)' : 'rgba(56,189,248,0.3)';
-  });
   render();
 }
 
@@ -413,25 +355,11 @@ function setColWidth(w) {
 function toggleTheme() {
   isLightTheme = !isLightTheme;
   document.body.classList.toggle('light-theme', isLightTheme);
-  const btn = document.getElementById('btn-theme');
-  if (btn) {
-    btn.textContent   = isLightTheme ? '🌙 다크 모드'  : '☀ 라이트 모드';
-    btn.style.color   = isLightTheme ? '#fbbf24'       : '#94a3b8';
-    btn.style.background = isLightTheme ? '#3d2a00'    : '#162d50';
-    btn.style.borderColor = isLightTheme ? 'rgba(251,191,36,0.5)' : 'rgba(56,189,248,0.3)';
-  }
 }
 
 // 실적 보기 토글 (착수없음=20%, 착수만=70%, 착수+종료=100%)
 function toggleActuals() {
   showActuals = !showActuals;
-  const btn = document.getElementById('btn-actuals');
-  if (btn) {
-    btn.style.color       = showActuals ? '#86efac' : '#94a3b8';
-    btn.style.background  = showActuals ? '#052e16' : '#162d50';
-    btn.style.borderColor = showActuals ? 'rgba(34,197,94,0.5)' : 'rgba(56,189,248,0.3)';
-    btn.textContent       = showActuals ? '✅ 실적 보기 ON' : '실적 보기';
-  }
   _applyActualsFilter();
 }
 
@@ -525,9 +453,9 @@ const GJ_KEYWORD_EXACT = [
   { kw: '보온',     bg: '#f472b6' },  // 핑크 (스프레이 보온 포함)
   { kw: '도장',     bg: '#fcd5a8' },  // 연한 살구색
   { kw: '판넬',     bg: '#86efac' },  // 연두색
-  { kw: '가구',     bg: '#16a34a', light: true },  // 초록
-  { kw: '장판',     bg: '#16a34a', light: true },
-  { kw: '스커트',   bg: '#16a34a', light: true },
+  { kw: '가구',     bg: '#b45309', light: true },  // 앰버(나무색)
+  { kw: '장판',     bg: '#b45309', light: true },
+  { kw: '스커트',   bg: '#b45309', light: true },
 ];
 
 function _getExactColor(gj, task) {
@@ -660,6 +588,7 @@ function daysBetween(d1, d2) {
 // 메인 렌더링
 // ══════════════════════════════════════════════
 function render() {
+  initGanttState();
   const gridEl = document.getElementById('gantt-grid');
   const wrapEl = document.getElementById('gantt-wrap');
   const msgEl  = document.getElementById('gantt-message');
@@ -940,6 +869,8 @@ function scrollToToday() {
   const cellRect = todayCell.getBoundingClientRect();
   const cellCenterInWrap = (cellRect.left - wrapRect.left) + wrap.scrollLeft + (cellRect.width / 2);
   wrap.scrollLeft = cellCenterInWrap - (wrap.clientWidth / 2);
+  // 주 단위 오프셋 적용 (Streamlit ◀ 1주전 / 1주후 ▶ 버튼 누적값)
+  if (WEEK_OFFSET !== 0) wrap.scrollLeft += WEEK_OFFSET * 7 * COL_W;
 }
 
 // ══════════════════════════════════════════════

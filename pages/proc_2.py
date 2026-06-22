@@ -158,17 +158,101 @@ def _draw_ship_layout(layout_list, delay_by_area, title, is_split=False):
 
 
 # ══════════════════════════════════════════════
+#  간트 컨트롤 행 — Streamlit 네이티브 버튼
+#  iframe 외부에 배치 → 라이트/다크 테마 영향 없음
+# ══════════════════════════════════════════════
+def _render_gantt_ctrl_row(ss: dict):
+    """간트 차트 위에 표시할 컨트롤 버튼 행 (Streamlit 네이티브)"""
+    cols = st.columns([1.8, 1.4, 0.7, 0.7, 0.7, 1.4, 1.5, 0.9, 0.9])
+
+    # 읽기전용 상태 표시
+    with cols[0]:
+        if ss.get('proc2_gantt_light'):
+            st.markdown('<p style="margin:0;padding:4px 0;font-size:0.85rem;">📋 읽기 전용 상태</p>',
+                        unsafe_allow_html=True)
+        else:
+            st.markdown('<p style="color:#94a3b8;margin:0;padding:4px 0;font-size:0.85rem;">📋 읽기 전용 상태</p>',
+                        unsafe_allow_html=True)
+
+    # 숨기기 버튼
+    with cols[1]:
+        h_on = ss.get('proc2_gantt_hidden', False)
+        if st.button("숨기기 비활성화" if h_on else "숨기기 활성화",
+                     key="proc2_btn_hidden", use_container_width=True,
+                     type="primary" if h_on else "secondary"):
+            ss['proc2_gantt_hidden'] = not h_on
+            st.rerun()
+
+    # 열 폭 3단계
+    with cols[2]:
+        w_on = ss.get('proc2_gantt_col_width', 24) == 16
+        if st.button("좁게" + (" ✓" if w_on else ""),
+                     key="proc2_btn_col_sm", use_container_width=True,
+                     type="primary" if w_on else "secondary"):
+            ss['proc2_gantt_col_width'] = 16
+            st.rerun()
+    with cols[3]:
+        w_on = ss.get('proc2_gantt_col_width', 24) == 24
+        if st.button("보통" + (" ✓" if w_on else ""),
+                     key="proc2_btn_col_md", use_container_width=True,
+                     type="primary" if w_on else "secondary"):
+            ss['proc2_gantt_col_width'] = 24
+            st.rerun()
+    with cols[4]:
+        w_on = ss.get('proc2_gantt_col_width', 24) == 36
+        if st.button("넓게" + (" ✓" if w_on else ""),
+                     key="proc2_btn_col_lg", use_container_width=True,
+                     type="primary" if w_on else "secondary"):
+            ss['proc2_gantt_col_width'] = 36
+            st.rerun()
+
+    # 라이트/다크 모드
+    with cols[5]:
+        lt_on = ss.get('proc2_gantt_light', False)
+        if st.button("🌙 다크 모드" if lt_on else "☀ 라이트 모드",
+                     key="proc2_btn_theme", use_container_width=True,
+                     type="primary" if lt_on else "secondary"):
+            ss['proc2_gantt_light'] = not lt_on
+            st.rerun()
+
+    # 실적 보기
+    with cols[6]:
+        ac_on = ss.get('proc2_gantt_actuals', False)
+        if st.button("✅ 실적보기 ON" if ac_on else "실적 보기",
+                     key="proc2_btn_actuals", use_container_width=True,
+                     type="primary" if ac_on else "secondary"):
+            ss['proc2_gantt_actuals'] = not ac_on
+            st.rerun()
+
+    # 주 스크롤
+    with cols[7]:
+        if st.button("◀ 1주전", key="proc2_btn_prev", use_container_width=True):
+            ss['proc2_gantt_week_offset'] = ss.get('proc2_gantt_week_offset', 0) - 1
+            st.rerun()
+    with cols[8]:
+        if st.button("1주후 ▶", key="proc2_btn_next", use_container_width=True):
+            ss['proc2_gantt_week_offset'] = ss.get('proc2_gantt_week_offset', 0) + 1
+            st.rerun()
+
+
+# ══════════════════════════════════════════════
 #  ★ 간트 HTML 컴포넌트 렌더링 (신규)
 # ══════════════════════════════════════════════
 def _render_gantt_component(tasks: list, is_editable: bool = False,
                              current_user: str = "", height: int = 900,
                              row_mode: str = "area",
                              wrap_max_height: str = "520px",
-                             template: str = "gantt_editor.html"):
+                             template: str = "gantt_editor.html",
+                             show_hidden: bool = False,
+                             col_width: int = 24,
+                             light_theme: bool = False,
+                             show_actuals: bool = False,
+                             week_offset: int = 0):
     """간트 HTML 템플릿에 데이터를 주입해 컴포넌트로 렌더링
     row_mode: 'area' (구역별) | 'ship' (호선별)
     wrap_max_height: .gantt-wrap 영역 최대 높이 CSS 값 (기본 520px, 최대화 시 viewport 기준)
     template: 사용할 HTML 파일명 (기본 gantt_editor.html, 공정회의 모드는 gantt_meeting.html)
+    show_hidden/col_width/light_theme/show_actuals/week_offset: Streamlit 컨트롤 상태
     """
     html_path = Path(__file__).parent.parent / "assets" / template
     if not html_path.exists():
@@ -186,6 +270,11 @@ def _render_gantt_component(tasks: list, is_editable: bool = False,
         .replace('__IS_EDITABLE__',         'true' if is_editable else 'false')
         .replace('__CURRENT_USER__',        current_user)
         .replace('__ROW_MODE__',            row_mode)
+        .replace('__INIT_SHOW_HIDDEN__',    'true' if show_hidden else 'false')
+        .replace('__INIT_COL_WIDTH__',      str(col_width))
+        .replace('__INIT_LIGHT_THEME__',    'true' if light_theme else 'false')
+        .replace('__INIT_SHOW_ACTUALS__',   'true' if show_actuals else 'false')
+        .replace('__INIT_WEEK_OFFSET__',    str(week_offset))
     )
     # gantt-wrap 최대 높이 동적 치환 (템플릿 하드코딩 520px → 파라미터)
     if wrap_max_height != "520px":
@@ -518,6 +607,14 @@ def render():
     # 편집은 변경 계획 표시 중일 때만 허용 (저장 로직이 B 컬럼만 갱신하기 때문)
     effective_editable = is_editable and (gantt_basis == "변경 계획")
 
+    # ── 간트 컨트롤 세션 상태 초기화 ─────────────────
+    _ss = st.session_state
+    if 'proc2_gantt_hidden'      not in _ss: _ss['proc2_gantt_hidden']      = False
+    if 'proc2_gantt_col_width'   not in _ss: _ss['proc2_gantt_col_width']   = 24
+    if 'proc2_gantt_light'       not in _ss: _ss['proc2_gantt_light']       = False
+    if 'proc2_gantt_actuals'     not in _ss: _ss['proc2_gantt_actuals']     = False
+    if 'proc2_gantt_week_offset' not in _ss: _ss['proc2_gantt_week_offset'] = 0
+
     # ══════════════════════════════════════════════
     #  간트 최대화 모드 — 사이드바는 유지, 메인 영역만 풀 너비
     # ══════════════════════════════════════════════
@@ -558,6 +655,9 @@ def render():
                 st.session_state["proc2_tab_choice"] = TAB_OPTIONS[1]
                 st.rerun()
 
+        # ── 간트 컨트롤 행 (Streamlit 네이티브) ──
+        _render_gantt_ctrl_row(_ss)
+
         has_filter = bool(selected_projects) or bool(selected_gongjongs)
         if not has_filter:
             st.info("💡 사이드바에서 **호선** 또는 **공종**을 먼저 선택하세요.")
@@ -567,13 +667,15 @@ def render():
             if not gantt_tasks:
                 st.warning(f"⚠️ 선택한 조건에 해당하는 작업이 없습니다. ({gantt_basis} 기준 일자가 있는 행만 표시)")
             else:
-                # CSS가 iframe 높이를 viewport에 맞추므로 Python height는 fallback.
-                # wrap_max_height도 iframe 내부 viewport 기준 calc(100vh - 140px)로 확장
-                # (iframe 내 legend/status/padding ~130px 제외)
                 _render_gantt_component(gantt_tasks, is_editable=effective_editable,
                                         current_user=current_user, height=1200,
                                         row_mode=row_mode,
-                                        wrap_max_height="calc(100vh - 140px)")
+                                        wrap_max_height="calc(100vh - 140px)",
+                                        show_hidden=_ss['proc2_gantt_hidden'],
+                                        col_width=_ss['proc2_gantt_col_width'],
+                                        light_theme=_ss['proc2_gantt_light'],
+                                        show_actuals=_ss['proc2_gantt_actuals'],
+                                        week_offset=_ss['proc2_gantt_week_offset'])
         return
 
     # ── 상단 정보 ──────────────────────────────────
@@ -917,6 +1019,9 @@ def render():
                 st.session_state["proc2_gantt_maximized"] = True
                 st.rerun()
 
+        # ── 간트 컨트롤 행 (Streamlit 네이티브) ──
+        _render_gantt_ctrl_row(_ss)
+
         has_filter = bool(selected_projects) or bool(selected_gongjongs)
         if not has_filter:
             st.info("💡 사이드바에서 **호선** 또는 **공종**을 먼저 선택하세요.")
@@ -927,7 +1032,12 @@ def render():
             else:
                 _render_gantt_component(gantt_tasks, is_editable=effective_editable,
                                         current_user=current_user, height=1400,
-                                        row_mode=row_mode)
+                                        row_mode=row_mode,
+                                        show_hidden=_ss['proc2_gantt_hidden'],
+                                        col_width=_ss['proc2_gantt_col_width'],
+                                        light_theme=_ss['proc2_gantt_light'],
+                                        show_actuals=_ss['proc2_gantt_actuals'],
+                                        week_offset=_ss['proc2_gantt_week_offset'])
 
         st.markdown('<hr style="border-color:rgba(56,189,248,0.15);">', unsafe_allow_html=True)
         st.subheader("📋 구역별 상세 작업 현황")
