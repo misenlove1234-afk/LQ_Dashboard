@@ -16,11 +16,15 @@
 
 import re
 import json
+import logging
+import traceback
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 
 from utils.db import run_query, execute_query
+
+logger = logging.getLogger(__name__)
 
 
 # ──────────────────────────────────────────────
@@ -30,6 +34,8 @@ TABLE_PROCESS  = "lq_proc2_1"          # 공정 현황 테이블
 TABLE_CHG_LOG  = "lq_proc2_2"          # ★ 공정 변경 이력 (없으면 자동 생성)
 TABLE_AUTH     = "lq_proc2_3"          # ★ 간트 편집 권한 테이블 (없으면 자동 생성)
 TABLE_SUNPYO   = "dbo.lq_kpi5_1"      # 선표 (탑재착수 등 마일스톤 조회)
+TABLE_MEMO     = "lq_proc2_memo"       # ★ 공정 메모 (없으면 자동 생성)
+TABLE_MGR      = "lq_proc2_mgr"        # ★ 프로젝트 담당자 (없으면 자동 생성)
 
 
 # ══════════════════════════════════════════════
@@ -789,3 +795,131 @@ def load_tapjae_dates() -> pd.DataFrame:
     # 호선당 1행만 (중복 시 가장 이른 날짜 유지)
     df = df.sort_values('탑재착수').drop_duplicates(subset=['프로젝트'], keep='first')
     return df[['프로젝트', '탑재착수']].reset_index(drop=True)
+
+
+# ══════════════════════════════════════════════
+#  ★ 10. 공정 메모 (lq_proc2_memo)
+# ══════════════════════════════════════════════
+def ensure_memo_table() -> bool:
+    ddl = f"""
+    IF OBJECT_ID('{TABLE_MEMO}', 'U') IS NULL
+    BEGIN
+        CREATE TABLE [{TABLE_MEMO}] (
+            메모ID    INT IDENTITY(1,1) PRIMARY KEY,
+            프로젝트  NVARCHAR(100)   NULL,
+            조직      NVARCHAR(100)   NOT NULL,
+            작성자    NVARCHAR(100)   NOT NULL,
+            메모      NVARCHAR(MAX)   NOT NULL,
+            사진데이터 VARBINARY(MAX) NULL,
+            파일명    NVARCHAR(255)   NULL,
+            등록일시  DATETIME2       DEFAULT GETDATE()
+        );
+        CREATE INDEX IX_{TABLE_MEMO}_프로젝트 ON [{TABLE_MEMO}](프로젝트);
+        CREATE INDEX IX_{TABLE_MEMO}_등록일시 ON [{TABLE_MEMO}](등록일시 DESC);
+    END
+    """
+    return execute_query(ddl)
+
+
+def add_memo(조직: str, 작성자: str, 메모: str,
+             사진_bytes=None, 파일명: str = None,
+             프로젝트: str = None) -> bool:
+    ensure_memo_table()
+    return execute_query(
+        f"INSERT INTO [{TABLE_MEMO}] (프로젝트, 조직, 작성자, 메모, 사진데이터, 파일명) "
+        f"VALUES (?, ?, ?, ?, ?, ?)",
+        (프로젝트, 조직, 작성자, 메모, 사진_bytes, 파일명)
+    )
+
+
+def get_memos(프로젝트: str = None, limit: int = 30) -> pd.DataFrame:
+    ensure_memo_table()
+    if 프로젝트:
+        df = run_query(
+            f"SELECT TOP {limit} 메모ID, 프로젝트, 조직, 작성자, 메모, 파일명, 등록일시 "
+            f"FROM [{TABLE_MEMO}] WHERE 프로젝트 = ? ORDER BY 등록일시 DESC",
+            params=(프로젝트,)
+        )
+    else:
+        df = run_query(
+            f"SELECT TOP {limit} 메모ID, 프로젝트, 조직, 작성자, 메모, 파일명, 등록일시 "
+            f"FROM [{TABLE_MEMO}] ORDER BY 등록일시 DESC"
+        )
+    return df if df is not None else pd.DataFrame()
+
+
+def get_memo_photo(memo_id: int):
+    """메모 사진 데이터(bytes) 조회. 없으면 None 반환."""
+    ensure_memo_table()
+    df = run_query(
+        f"SELECT 사진데이터 FROM [{TABLE_MEMO}] WHERE 메모ID = ?",
+        params=(memo_id,)
+    )
+    if df is None or df.empty:
+        return None
+    return df.iloc[0, 0]
+
+
+def delete_memo(memo_id: int) -> bool:
+    return execute_query(
+        f"DELETE FROM [{TABLE_MEMO}] WHERE 메모ID = ?",
+        (memo_id,)
+    )
+
+
+# ══════════════════════════════════════════════
+#  ★ 11. 프로젝트 담당자 (lq_proc2_mgr)
+# ══════════════════════════════════════════════
+def ensure_mgr_table() -> bool:
+    ddl = f"""
+    IF OBJECT_ID('{TABLE_MGR}', 'U') IS NULL
+    BEGIN
+        CREATE TABLE [{TABLE_MGR}] (
+            프로젝트  NVARCHAR(100) PRIMARY KEY,
+            담당자    NVARCHAR(200) NOT NULL,
+            수정일시  DATETIME2     DEFAULT GETDATE()
+        );
+    END
+    """
+    return execute_query(ddl)
+
+
+def get_manager(프로젝트: str) -> str:
+    """프로젝트 담당자 이름 반환. 없으면 빈 문자열."""
+    ensure_mgr_table()
+    df = run_query(
+        f"SELECT 담당자 FROM [{TABLE_MGR}] WHERE 프로젝트 = ?",
+        params=(프로젝트,)
+    )
+    if df is None or df.empty:
+        return ""
+    return str(df.iloc[0, 0])
+
+
+def save_manager(프로젝트: str, 담당자: str) -> bool:
+    """프로젝트 담당자 저장 (없으면 INSERT, 있으면 UPDATE)."""
+    ensure_mgr_table()
+    return execute_query(
+        f"MERGE [{TABLE_MGR}] AS t "
+        f"USING (SELECT ? AS p) AS s ON t.프로젝트 = s.p "
+        f"WHEN MATCHED THEN UPDATE SET 담당자=?, 수정일시=GETDATE() "
+        f"WHEN NOT MATCHED THEN INSERT (프로젝트, 담당자) VALUES (?, ?);",
+        (프로젝트, 담당자, 프로젝트, 담당자)
+    )
+
+
+# ══════════════════════════════════════════════
+#  ★ 12. 프로젝트 날짜 범위 (간트 드롭다운 연동)
+# ══════════════════════════════════════════════
+def get_project_date_range(df: pd.DataFrame, 프로젝트: str):
+    """프로젝트의 실제 시작일/종료일 반환 (변경 계획 B 기준, 없으면 초기 계획 A)."""
+    sub = df[df['프로젝트'] == 프로젝트]
+    if sub.empty:
+        return None, None
+    start_col = '변경_계획_B_착수' if '변경_계획_B_착수' in sub.columns else '초기_계획_A_착수'
+    end_col   = '변경_계획_B_완료' if '변경_계획_B_완료' in sub.columns else '초기_계획_A_완료'
+    s = sub[start_col].dropna().min()
+    e = sub[end_col].dropna().max()
+    if pd.isna(s) or pd.isna(e):
+        return None, None
+    return s.date(), e.date()

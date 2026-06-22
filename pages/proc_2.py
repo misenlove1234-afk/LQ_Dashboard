@@ -44,6 +44,10 @@ from data.proc_2_data import (
     add_new_task,
     generate_gantt_print_html,
     load_tapjae_dates,
+    # ★ 신규
+    add_memo, get_memos, delete_memo, get_memo_photo,
+    get_manager, save_manager,
+    get_project_date_range,
 )
 from utils.access_log import get_client_user
 
@@ -980,6 +984,69 @@ def render():
             gantt_df    = filtered_df
             gantt_label = "전체"
 
+        # ── ① 프로젝트 드롭다운 + 담당자 칸 ───────────────
+        _all_projs_in_gantt = sorted(gantt_df['프로젝트'].dropna().unique().tolist()) \
+                              if not gantt_df.empty else []
+        col_pj, col_mgr_lbl, col_mgr_val, col_mgr_btn = st.columns([2.5, 0.6, 1.8, 0.8])
+        with col_pj:
+            _gantt_proj_opts = ["(전체)"] + _all_projs_in_gantt
+            _gantt_proj_prev = _ss.get('proc2_gantt_proj', "(전체)")
+            _gantt_proj_idx  = _gantt_proj_opts.index(_gantt_proj_prev) \
+                               if _gantt_proj_prev in _gantt_proj_opts else 0
+            _gantt_proj = st.selectbox(
+                "프로젝트", _gantt_proj_opts,
+                index=_gantt_proj_idx, key="proc2_gantt_proj_sel",
+                label_visibility="collapsed",
+            )
+            if _gantt_proj != _ss.get('proc2_gantt_proj'):
+                _ss['proc2_gantt_proj'] = _gantt_proj
+                # ② 프로젝트 변경 시 날짜 범위 표시용 세션 갱신
+                if _gantt_proj != "(전체)":
+                    _ps, _pe = get_project_date_range(filtered_df, _gantt_proj)
+                    _ss['proc2_gantt_proj_start'] = _ps
+                    _ss['proc2_gantt_proj_end']   = _pe
+                else:
+                    _ss.pop('proc2_gantt_proj_start', None)
+                    _ss.pop('proc2_gantt_proj_end', None)
+                st.rerun()
+
+        # ③ 선택된 프로젝트의 기간 배지 표시
+        if _ss.get('proc2_gantt_proj_start') and _ss.get('proc2_gantt_proj_end'):
+            _ps_d = _ss['proc2_gantt_proj_start']
+            _pe_d = _ss['proc2_gantt_proj_end']
+            st.caption(f"📅 {_gantt_proj} 기간: **{_ps_d}** ~ **{_pe_d}**")
+
+        # ④ 담당자 칸
+        _sel_proj_for_mgr = _gantt_proj if _gantt_proj != "(전체)" else \
+                             (selected_projects[0] if len(selected_projects) == 1 else "")
+        with col_mgr_lbl:
+            st.markdown('<p style="margin:0;padding:6px 0 0 0;font-size:0.85rem;color:#94a3b8;">담당자</p>',
+                        unsafe_allow_html=True)
+        with col_mgr_val:
+            _mgr_default = get_manager(_sel_proj_for_mgr) if _sel_proj_for_mgr else ""
+            _mgr_input = st.text_input(
+                "담당자입력", value=_mgr_default,
+                key=f"proc2_mgr_input_{_sel_proj_for_mgr or 'all'}",
+                placeholder="담당자 이름",
+                label_visibility="collapsed",
+            )
+        with col_mgr_btn:
+            if st.button("저장", key="proc2_mgr_save", use_container_width=True):
+                if _sel_proj_for_mgr and _mgr_input.strip():
+                    try:
+                        save_manager(_sel_proj_for_mgr, _mgr_input.strip())
+                        st.toast("✅ 담당자가 저장되었습니다.")
+                    except Exception:
+                        logger.error("담당자 저장 실패", exc_info=True)
+                        st.error("저장 중 오류가 발생했습니다.")
+                else:
+                    st.warning("프로젝트와 담당자를 입력해 주세요.")
+
+        # 프로젝트 필터 적용 (드롭다운 선택이 있으면 gantt_df를 해당 프로젝트로 좁힘)
+        if _ss.get('proc2_gantt_proj', "(전체)") != "(전체)":
+            gantt_df = gantt_df[gantt_df['프로젝트'] == _ss['proc2_gantt_proj']]
+            gantt_label = _ss['proc2_gantt_proj']
+
         # row_mode: 공종만 필터(프로젝트·구역 미선택) → 호선별, 아니면 구역별
         row_mode = "ship" if (
             bool(selected_gongjongs)
@@ -1241,5 +1308,114 @@ def render():
                     else:
                         st.warning("사용자ID와 이름을 모두 입력해주세요.")
                 st.caption(f"💡 현재 접속자 ID: `{current_user}` — 이 값을 사용자ID에 입력하면 현재 접속자에게 권한 부여")
+
+        # ══════════════════════════════════════════════
+        #  📝 공정 메모 섹션
+        # ══════════════════════════════════════════════
+        st.markdown('<hr style="border-color:rgba(56,189,248,0.15);">', unsafe_allow_html=True)
+        st.subheader("📝 공정 메모")
+
+        _memo_proj = _ss.get('proc2_gantt_proj', "(전체)")
+        _memo_proj_filter = None if _memo_proj == "(전체)" else _memo_proj
+
+        with st.expander("✏️ 새 메모 작성", expanded=False):
+            with st.form(key="proc2_memo_form", clear_on_submit=True):
+                fm1, fm2 = st.columns(2)
+                memo_org    = fm1.text_input(
+                    "조직", key="proc2_memo_org",
+                    placeholder="예: 선실공사팀"
+                )
+                memo_author = fm2.text_input(
+                    "작성자", value=current_user, key="proc2_memo_author"
+                )
+                memo_proj_input = st.text_input(
+                    "프로젝트 (선택)", value=_memo_proj_filter or "",
+                    key="proc2_memo_proj_input",
+                    placeholder="예: H1234"
+                )
+                memo_text = st.text_area(
+                    "메모 내용",
+                    key="proc2_memo_text",
+                    placeholder="공정회의 내용, 변경사항 등을 입력하세요.",
+                    height=120,
+                )
+                memo_photo = st.file_uploader(
+                    "사진 첨부 (선택)", type=["jpg", "jpeg", "png", "bmp"],
+                    key="proc2_memo_photo"
+                )
+                submitted_memo = st.form_submit_button("💾 저장", type="primary")
+                if submitted_memo:
+                    if not memo_org.strip():
+                        st.warning("조직을 입력해주세요.")
+                    elif not memo_author.strip():
+                        st.warning("작성자를 입력해주세요.")
+                    elif not memo_text.strip():
+                        st.warning("메모 내용을 입력해주세요.")
+                    else:
+                        _photo_bytes = memo_photo.read() if memo_photo else None
+                        _photo_name  = memo_photo.name  if memo_photo else None
+                        try:
+                            _ok_memo = add_memo(
+                                조직=memo_org.strip(),
+                                작성자=memo_author.strip(),
+                                메모=memo_text.strip(),
+                                사진_bytes=_photo_bytes,
+                                파일명=_photo_name,
+                                프로젝트=memo_proj_input.strip() or None,
+                            )
+                            if _ok_memo:
+                                st.success("✅ 메모가 저장되었습니다.")
+                                st.rerun()
+                            else:
+                                st.error("저장 중 오류가 발생했습니다. 관리자에게 문의해 주세요.")
+                        except Exception:
+                            logger.error("메모 저장 실패", exc_info=True)
+                            st.error("저장 중 오류가 발생했습니다.")
+
+        # 메모 목록
+        _memos_df = get_memos(프로젝트=_memo_proj_filter, limit=50)
+        if _memos_df is not None and not _memos_df.empty:
+            st.caption(
+                f"최근 메모 {len(_memos_df)}건" +
+                (f" — 프로젝트: **{_memo_proj_filter}**" if _memo_proj_filter else " (전체)")
+            )
+            for _, _mrow in _memos_df.iterrows():
+                _mid      = int(_mrow['메모ID'])
+                _mproj    = _mrow.get('프로젝트') or ""
+                _morg     = _mrow.get('조직', "")
+                _mauth    = _mrow.get('작성자', "")
+                _mdate    = _mrow.get('등록일시')
+                _mdate_s  = _mdate.strftime('%Y-%m-%d %H:%M') if pd.notnull(_mdate) else ""
+                _mtext    = _mrow.get('메모', "")
+                _mfile    = _mrow.get('파일명') or ""
+                with st.container():
+                    mc1, mc2 = st.columns([10, 1])
+                    with mc1:
+                        _proj_badge = f"`{_mproj}` &nbsp;" if _mproj else ""
+                        st.markdown(
+                            f"{_proj_badge}**{_morg}** · {_mauth}"
+                            f"&nbsp;&nbsp;<span style='color:#94a3b8;font-size:0.82rem;'>{_mdate_s}</span>",
+                            unsafe_allow_html=True,
+                        )
+                        st.write(_mtext)
+                        if _mfile:
+                            _pdata = get_memo_photo(_mid)
+                            if _pdata:
+                                with st.expander(f"📷 사진 보기 ({_mfile})"):
+                                    st.image(_pdata, use_container_width=True)
+                    with mc2:
+                        if st.button("🗑️", key=f"proc2_memo_del_{_mid}", help="이 메모 삭제"):
+                            try:
+                                delete_memo(_mid)
+                                st.rerun()
+                            except Exception:
+                                logger.error("메모 삭제 실패", exc_info=True)
+                                st.error("삭제 중 오류가 발생했습니다.")
+                    st.markdown(
+                        '<hr style="border-color:rgba(56,189,248,0.08);margin:4px 0;">',
+                        unsafe_allow_html=True,
+                    )
+        else:
+            st.caption("저장된 메모가 없습니다.")
 
     # ══════════════════════════════════════════════
