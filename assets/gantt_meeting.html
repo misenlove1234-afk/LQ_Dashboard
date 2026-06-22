@@ -19,10 +19,40 @@
 <title>공정 타임라인 편집기</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── CSS 변수 (다크 테마 기본값) ── */
+:root {
+  --bg-body:    #1a3252;
+  --bg-wrap:    #1c3660;
+  --bg-area:    #1e4a8c;
+  --bg-header:  #1a3a6a;
+  --bg-month:   #1e3a5f;
+  --bg-legend:  rgba(15,35,65,0.4);
+  --text-main:  #e2e8f0;
+  --text-area:  #e0f2fe;
+  --text-month: #7dd3fc;
+  --border-grid: rgba(56,189,248,0.10);
+  --border-area: rgba(56,189,248,0.4);
+  --holiday-bg: rgba(253,224,71,0.12);
+  --today-bg:   rgba(244,63,94,0.18);
+  --col-w:      24px;
+}
+/* ── 라이트 테마 오버라이드 ── */
+body.light-theme {
+  --bg-body:    #f0f4f8;
+  --bg-wrap:    #ffffff;
+  --bg-legend:  rgba(30,74,140,0.08);
+  --text-main:  #1e293b;
+  --border-grid: rgba(100,160,220,0.25);
+  --border-area: rgba(56,189,248,0.55);
+  --holiday-bg: rgba(202,138,4,0.20);
+  --today-bg:   rgba(220,38,38,0.22);
+}
+
 body {
   font-family: "Malgun Gothic", "맑은 고딕", -apple-system, sans-serif;
-  background: #1a3252;
-  color: #e2e8f0;
+  background: var(--bg-body);
+  color: var(--text-main);
   padding: 12px;
 }
 
@@ -30,7 +60,7 @@ body {
 .legend-row {
   display: flex; gap: 1rem; flex-wrap: wrap;
   font-size: 0.82rem; margin-bottom: 0.6rem;
-  padding: 8px; background: rgba(15,35,65,0.4); border-radius: 6px;
+  padding: 8px; background: var(--bg-legend); border-radius: 6px;
 }
 .legend-item { display: flex; align-items: center; gap: 0.3rem; }
 .legend-box { width: 14px; height: 14px; border-radius: 2px; }
@@ -45,8 +75,8 @@ body {
 .gantt-wrap {
   position: relative;  /* 드래그 프리뷰 오버레이를 위해 필요 */
   overflow-x: auto; overflow-y: visible;
-  background: #1c3660;
-  border: 1px solid rgba(56,189,248,0.2);
+  background: var(--bg-wrap);
+  border: 1px solid var(--border-area);
   border-radius: 8px;
 }
 
@@ -75,39 +105,41 @@ body {
   border-collapse: collapse;
   font-family: 'Malgun Gothic', monospace;
   font-size: 10.5px;
-  color: #e2e8f0;
-  background: #1c3660;
+  color: var(--text-main);
+  background: var(--bg-wrap);
   table-layout: fixed;
 }
 .excel-gantt th, .excel-gantt td {
-  border: 1px solid rgba(56,189,248,0.10);
+  border: 1px solid var(--border-grid);
   padding: 0; text-align: center; vertical-align: middle;
-  height: 30px; min-width: 24px; max-width: 24px;
+  height: 30px; min-width: var(--col-w); max-width: var(--col-w);
   overflow: hidden; white-space: nowrap;
 }
 .excel-gantt .area-cell {
-  background: #1e4a8c; color: #e0f2fe; font-weight: 700;
+  background: var(--bg-area); color: var(--text-area); font-weight: 700;
   text-align: center; padding: 2px 4px;
   min-width: 80px; max-width: 80px;
   position: sticky; left: 0; z-index: 5;
-  border-right: 2px solid rgba(56,189,248,0.4);
+  border-right: 2px solid var(--border-area);
   font-size: 10px;
 }
 .excel-gantt thead th {
-  background: #1a3a6a; color: #e2e8f0;
+  background: var(--bg-header); color: var(--text-main);
   font-weight: 600; font-size: 9.5px; padding: 1px 0;
   position: sticky; z-index: 4;
 }
-.excel-gantt thead th.area-cell { z-index: 10; background: #1e4a8c; }
+.excel-gantt thead th.area-cell { z-index: 10; background: var(--bg-area); }
+.excel-gantt th.month-hdr { background: var(--bg-month) !important; color: var(--text-month) !important; }
 .excel-gantt thead tr:nth-child(1) th { top: 0; }
 .excel-gantt thead tr:nth-child(2) th { top: 30px; }
 .excel-gantt thead tr:nth-child(3) th { top: 60px; }
 
 .excel-gantt td.saturday, .excel-gantt th.saturday {
-  background: rgba(253,224,71,0.12) !important;
+  background: var(--holiday-bg) !important;
 }
 .excel-gantt td.today, .excel-gantt th.today {
-  background: rgba(244,63,94,0.18) !important;
+  background: var(--today-bg) !important;
+  border-left: 3px solid #ef4444 !important;
   color: #fca5a5; font-weight: 700;
 }
 
@@ -163,6 +195,14 @@ body {
   pointer-events: none;
 }
 
+/* ── 지연 항목 강조 ── */
+.excel-gantt td.bar.bar-overdue {
+  filter: saturate(0.5) brightness(0.92);
+  outline: 2px solid #ef4444 !important;
+  outline-offset: -2px;
+}
+.excel-gantt td.bar.bar-overdue:hover { filter: none; }
+
 /* ── 막대 색상은 JavaScript에서 동적 배정 (공종=톤, 작업내용=개별 색) ── */
 
 /* ── 변경 내역 패널 ── */
@@ -179,12 +219,12 @@ body {
   width: 100%; border-collapse: collapse; font-size: 0.82rem;
 }
 .pending-panel th {
-  background: #1a3252; color: #7dd3fc;
+  background: var(--bg-body); color: #7dd3fc;
   padding: 0.4rem; text-align: left;
 }
 .pending-panel td {
-  background: #1c3660; color: #e2e8f0;
-  padding: 0.4rem; border-bottom: 1px solid rgba(56,189,248,0.1);
+  background: var(--bg-wrap); color: var(--text-main);
+  padding: 0.4rem; border-bottom: 1px solid var(--border-grid);
 }
 .btn-row { margin-top: 0.8rem; display: flex; gap: 0.5rem; }
 .btn-row button {
@@ -221,12 +261,35 @@ body {
   📊 공정 타임라인 — 막대를 드래그하여 일정을 조정하세요
 </div>
 
-<!-- ── 숨기기 토글 버튼 ── -->
-<div id="toggle-row" style="margin-bottom:0.5rem;">
+<!-- ── 컨트롤 버튼 행 ── -->
+<div id="ctrl-row" style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:0.5rem;align-items:center;">
   <button id="btn-toggle-hidden" onclick="toggleHidden()"
     style="background:#162d50;color:#94a3b8;border:1px solid rgba(56,189,248,0.3);
            padding:4px 12px;border-radius:4px;cursor:pointer;font-size:0.82rem;">
     숨기기 활성화
+  </button>
+
+  <span style="color:#475569;font-size:0.78rem;margin-left:0.6rem;">열 폭:</span>
+  <button id="btn-col-sm" onclick="setColWidth(16)"
+    style="background:#162d50;color:#94a3b8;border:1px solid rgba(56,189,248,0.3);
+           padding:4px 9px;border-radius:4px;cursor:pointer;font-size:0.82rem;">좁게</button>
+  <button id="btn-col-md" onclick="setColWidth(24)"
+    style="background:#1e4a8c;color:#7dd3fc;border:1px solid rgba(56,189,248,0.5);
+           padding:4px 9px;border-radius:4px;cursor:pointer;font-size:0.82rem;font-weight:700;">보통</button>
+  <button id="btn-col-lg" onclick="setColWidth(36)"
+    style="background:#162d50;color:#94a3b8;border:1px solid rgba(56,189,248,0.3);
+           padding:4px 9px;border-radius:4px;cursor:pointer;font-size:0.82rem;">넓게</button>
+
+  <button id="btn-theme" onclick="toggleTheme()"
+    style="background:#162d50;color:#94a3b8;border:1px solid rgba(56,189,248,0.3);
+           padding:4px 12px;border-radius:4px;cursor:pointer;font-size:0.82rem;margin-left:0.6rem;">
+    ☀ 라이트 모드
+  </button>
+
+  <button id="btn-overdue" onclick="toggleOverdueFilter()"
+    style="background:#162d50;color:#94a3b8;border:1px solid rgba(56,189,248,0.3);
+           padding:4px 12px;border-radius:4px;cursor:pointer;font-size:0.82rem;">
+    🚨 지연만 보기
   </button>
 </div>
 
@@ -287,6 +350,14 @@ let pendingChanges = [];
 // 숨기기 작업 표시 상태 (false: showFlag='Y'만 표시, true: 전체 표시)
 let showHidden = false;
 
+// 열 폭 / 글씨 크기 상태
+let COL_W = 24;
+let FONT_SIZE_PX = 18;
+
+// 테마 / 지연 필터 상태
+let isLightTheme = false;
+let showOverdueOnly = false;
+
 function toggleHidden() {
   showHidden = !showHidden;
   const btn = document.getElementById('btn-toggle-hidden');
@@ -297,6 +368,56 @@ function toggleHidden() {
     btn.style.background  = showHidden ? '#3d2a00' : '#162d50';
   }
   render();
+}
+
+// 열 폭 3단계 전환
+function setColWidth(w) {
+  COL_W = w;
+  FONT_SIZE_PX = w <= 16 ? 13 : w <= 24 ? 18 : 22;
+  document.documentElement.style.setProperty('--col-w', w + 'px');
+  const sizes = [16, 24, 36];
+  const ids   = ['btn-col-sm', 'btn-col-md', 'btn-col-lg'];
+  ids.forEach((id, i) => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    const active = sizes[i] === w;
+    btn.style.background  = active ? '#1e4a8c' : '#162d50';
+    btn.style.color       = active ? '#7dd3fc' : '#94a3b8';
+    btn.style.fontWeight  = active ? '700'     : '400';
+    btn.style.borderColor = active ? 'rgba(56,189,248,0.5)' : 'rgba(56,189,248,0.3)';
+  });
+  render();
+}
+
+// 라이트/다크 테마 토글
+function toggleTheme() {
+  isLightTheme = !isLightTheme;
+  document.body.classList.toggle('light-theme', isLightTheme);
+  const btn = document.getElementById('btn-theme');
+  if (btn) {
+    btn.textContent   = isLightTheme ? '🌙 다크 모드'  : '☀ 라이트 모드';
+    btn.style.color   = isLightTheme ? '#fbbf24'       : '#94a3b8';
+    btn.style.background = isLightTheme ? '#3d2a00'    : '#162d50';
+    btn.style.borderColor = isLightTheme ? 'rgba(251,191,36,0.5)' : 'rgba(56,189,248,0.3)';
+  }
+}
+
+// 지연 항목만 보기 토글 (렌더 후 opacity 적용)
+function toggleOverdueFilter() {
+  showOverdueOnly = !showOverdueOnly;
+  const btn = document.getElementById('btn-overdue');
+  if (btn) {
+    btn.style.color       = showOverdueOnly ? '#fca5a5' : '#94a3b8';
+    btn.style.background  = showOverdueOnly ? '#450a0a' : '#162d50';
+    btn.style.borderColor = showOverdueOnly ? 'rgba(239,68,68,0.5)' : 'rgba(56,189,248,0.3)';
+  }
+  _applyOverdueFilter();
+}
+
+function _applyOverdueFilter() {
+  document.querySelectorAll('#gantt-grid td.bar').forEach(el => {
+    el.style.opacity = (showOverdueOnly && el.dataset.overdue !== 'true') ? '0.1' : '';
+  });
 }
 
 // ══════════════════════════════════════════════
@@ -544,7 +665,7 @@ function render() {
   });
   mGroups.push({m:curM, span:curCnt});
   mGroups.forEach(g => {
-    html += `<th colspan="${g.span}" style="background:#1e3a5f; color:#7dd3fc;">${g.m}</th>`;
+    html += `<th class="month-hdr" colspan="${g.span}">${g.m}</th>`;
   });
   html += '</tr>';
 
@@ -645,15 +766,19 @@ function render() {
         const mgrSuffix = mgr && span >= 8 ? ` · ${mgr}` : '';
 
         // 글씨 크기 고정 및 텍스트 잘림 처리 (1칸→1자, 2칸→2자, 이상→계산)
-        const FONT_SIZE = '18px';
-        const maxChars = span <= 1 ? 1 : span === 2 ? 2 : Math.max(Math.floor((span * 24 - 8) / 18), 1);
+        const maxChars = span <= 1 ? 1 : span === 2 ? 2 : Math.max(Math.floor((span * COL_W - 8) / FONT_SIZE_PX), 1);
         let displayText = fullText;
         if (displayText.length > maxChars) {
           displayText = span <= 2 ? displayText.substring(0, maxChars) : displayText.substring(0, maxChars - 1) + '…';
         }
         const startMark = task.started ? '<span class="start-mark"></span>' : '';
         const endMark   = task.ended   ? '<span class="end-mark"></span>'   : '';
-        const label = `${startMark}<span style="font-size:${FONT_SIZE};line-height:30px;">${ioBadge}${displayText}${mgrSuffix}</span>${endMark}`;
+        const label = `${startMark}<span style="font-size:${FONT_SIZE_PX}px;line-height:30px;">${ioBadge}${displayText}${mgrSuffix}</span>${endMark}`;
+
+        // 지연 항목 판별: 종료일이 오늘 이전이고 종료실적 없는 경우
+        const isOverdue = !task.ended && task.e < TODAY;
+        const overdueClass = isOverdue ? ' bar-overdue' : '';
+        const overdueAttr  = isOverdue ? ' data-overdue="true"' : '';
 
         // 툴팁 — 선내/외, 담당자, 진행상태 추가
         const extraLines = [
@@ -666,10 +791,10 @@ function render() {
           ? `${baseInfo}${extraLines ? '\n' + extraLines : ''}`
           : `🔒 편집 권한 없음\n${baseInfo}${extraLines ? '\n' + extraLines : ''}`;
 
-        html += `<td class="bar${ioClass}" colspan="${span}" style="background:${barColor};"
+        html += `<td class="bar${ioClass}${overdueClass}" colspan="${span}" style="background:${barColor};"
                    data-task-id="${task.id}" data-start="${task.s}"
                    data-end="${task.e}" data-area="${task.area}"
-                   title="${title}">${label}</td>`;
+                   ${overdueAttr} title="${title}">${label}</td>`;
         cursor = startIdx + span;
       }
 
@@ -703,6 +828,8 @@ function render() {
   updatePendingPanel();
   // 렌더 직후 오늘 날짜 셀이 가로 중앙에 오도록 스크롤
   scrollToToday();
+  // 지연 필터 상태 유지 (재렌더 후 재적용)
+  if (showOverdueOnly) _applyOverdueFilter();
 }
 
 // ══════════════════════════════════════════════
