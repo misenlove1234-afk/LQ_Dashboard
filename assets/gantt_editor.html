@@ -30,23 +30,36 @@
   --bg-legend:  rgba(15,35,65,0.4);
   --text-main:  #e2e8f0;
   --text-area:  #e0f2fe;
+  --text-header: #e2e8f0;
   --text-month: #7dd3fc;
+  --bg-row:     transparent;
   --border-grid: rgba(56,189,248,0.10);
   --border-area: rgba(56,189,248,0.4);
   --holiday-bg: rgba(253,224,71,0.12);
   --today-bg:   rgba(244,63,94,0.18);
   --col-w:      24px;
+  --separator-color:   rgba(56,189,248,0.65);
+  --separator-outside: rgba(249,115,22,0.7);
 }
 /* ── 라이트 테마 오버라이드 ── */
 body.light-theme {
   --bg-body:    #f0f4f8;
   --bg-wrap:    #ffffff;
+  --bg-area:    #bfdbfe;
+  --bg-header:  #dbeafe;
+  --bg-month:   #93c5fd;
   --bg-legend:  rgba(30,74,140,0.08);
   --text-main:  #1e293b;
+  --text-area:  #1e293b;
+  --text-header: #1e293b;
+  --text-month: #1e3a5f;
+  --bg-row:     #eff6ff;
   --border-grid: rgba(100,160,220,0.25);
   --border-area: rgba(56,189,248,0.55);
   --holiday-bg: rgba(202,138,4,0.20);
   --today-bg:   rgba(220,38,38,0.22);
+  --separator-color:   #1d4ed8;
+  --separator-outside: #c2410c;
 }
 
 body {
@@ -121,11 +134,11 @@ body {
   min-width: 80px; max-width: 80px;
   position: sticky; left: 0; z-index: 5;
   border-right: 2px solid var(--border-area);
-  font-size: 10px;
+  font-size: 14px;
 }
 .excel-gantt thead th {
-  background: var(--bg-header); color: var(--text-main);
-  font-weight: 600; font-size: 9.5px; padding: 1px 0;
+  background: var(--bg-header); color: var(--text-header);
+  font-weight: 600; font-size: 12px; padding: 1px 0;
   position: sticky; z-index: 4;
 }
 .excel-gantt thead th.area-cell { z-index: 10; background: var(--bg-area); }
@@ -145,15 +158,16 @@ body {
 
 /* ── Deck 구역 경계선 (구역 첫 행 상단에 굵은 구분선) ── */
 .excel-gantt tbody tr.area-top-row td {
-  border-top: 2px solid rgba(56,189,248,0.45) !important;
+  border-top: 2px solid var(--separator-color) !important;
 }
 /* 선외(Outside) 구역 첫 행 — 주황색 구분선 */
 .excel-gantt tbody tr.area-top-row.outside-top-row td {
-  border-top: 2px solid rgba(249,115,22,0.55) !important;
+  border-top: 2px solid var(--separator-outside) !important;
 }
 /* 일반 셀 경계선은 아주 옅게 (내부 그리드 노이즈 최소화) */
 .excel-gantt tbody td:not(.bar):not(.area-cell) {
   border-color: rgba(56,189,248,0.05) !important;
+  background: var(--bg-row);
 }
 
 /* ── 작업 막대 ── */
@@ -182,26 +196,6 @@ body {
   color: #fb923c !important;
   border-right: 2px solid rgba(249,115,22,0.4) !important;
 }
-
-/* 시작/종료 실적 마커 (체크표시 대체) */
-.start-mark {
-  position: absolute; left: 0; top: 0; bottom: 0;
-  width: 5px; background: #22c55e; opacity: 0.9;
-  pointer-events: none;
-}
-.end-mark {
-  position: absolute; right: 0; top: 0; bottom: 0;
-  width: 5px; background: #ef4444; opacity: 0.9;
-  pointer-events: none;
-}
-
-/* ── 지연 항목 강조 ── */
-.excel-gantt td.bar.bar-overdue {
-  filter: saturate(0.5) brightness(0.92);
-  outline: 2px solid #ef4444 !important;
-  outline-offset: -2px;
-}
-.excel-gantt td.bar.bar-overdue:hover { filter: none; }
 
 /* ── 막대 색상은 JavaScript에서 동적 배정 (공종=톤, 작업내용=개별 색) ── */
 
@@ -286,10 +280,10 @@ body {
     ☀ 라이트 모드
   </button>
 
-  <button id="btn-overdue" onclick="toggleOverdueFilter()"
+  <button id="btn-actuals" onclick="toggleActuals()"
     style="background:#162d50;color:#94a3b8;border:1px solid rgba(56,189,248,0.3);
            padding:4px 12px;border-radius:4px;cursor:pointer;font-size:0.82rem;">
-    🚨 지연만 보기
+    실적 보기
   </button>
 </div>
 
@@ -354,9 +348,9 @@ let showHidden = false;
 let COL_W = 24;
 let FONT_SIZE_PX = 18;
 
-// 테마 / 지연 필터 상태
+// 테마 / 실적 필터 상태
 let isLightTheme = false;
-let showOverdueOnly = false;
+let showActuals = false;
 
 function toggleHidden() {
   showHidden = !showHidden;
@@ -402,21 +396,34 @@ function toggleTheme() {
   }
 }
 
-// 지연 항목만 보기 토글 (렌더 후 opacity 적용)
-function toggleOverdueFilter() {
-  showOverdueOnly = !showOverdueOnly;
-  const btn = document.getElementById('btn-overdue');
+// 실적 보기 토글 (착수없음=20%, 착수만=70%, 착수+종료=100%)
+function toggleActuals() {
+  showActuals = !showActuals;
+  const btn = document.getElementById('btn-actuals');
   if (btn) {
-    btn.style.color       = showOverdueOnly ? '#fca5a5' : '#94a3b8';
-    btn.style.background  = showOverdueOnly ? '#450a0a' : '#162d50';
-    btn.style.borderColor = showOverdueOnly ? 'rgba(239,68,68,0.5)' : 'rgba(56,189,248,0.3)';
+    btn.style.color       = showActuals ? '#86efac' : '#94a3b8';
+    btn.style.background  = showActuals ? '#052e16' : '#162d50';
+    btn.style.borderColor = showActuals ? 'rgba(34,197,94,0.5)' : 'rgba(56,189,248,0.3)';
+    btn.textContent       = showActuals ? '✅ 실적 보기 ON' : '실적 보기';
   }
-  _applyOverdueFilter();
+  _applyActualsFilter();
 }
 
-function _applyOverdueFilter() {
+function _applyActualsFilter() {
   document.querySelectorAll('#gantt-grid td.bar').forEach(el => {
-    el.style.opacity = (showOverdueOnly && el.dataset.overdue !== 'true') ? '0.1' : '';
+    if (!showActuals) { el.style.opacity = ''; return; }
+    const s = el.dataset.started === 'true';
+    const e = el.dataset.ended   === 'true';
+    el.style.opacity = (s && e) ? '1.0' : s ? '0.7' : '0.2';
+  });
+}
+
+function autoResizeFrame() {
+  requestAnimationFrame(() => {
+    try {
+      const h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) + 30;
+      if (window.frameElement) window.frameElement.style.height = h + 'px';
+    } catch(e) {}
   });
 }
 
@@ -426,7 +433,20 @@ function _applyOverdueFilter() {
 //   - 같은 작업내용 = 같은 색 (구역/공종 무관)
 // ══════════════════════════════════════════════
 
-// 공종별 색조(hue) 배정 — 황금각 분포로 최대 시각적 차별화
+// 공종별 색조(hue) 배정 — 알려진 공종 고정 hue + 미매칭은 황금각 자동 배정
+const GJ_FIXED_HUES = {
+  '선각':     0,    // 빨강
+  '도장':     210,  // 파랑
+  '전장':     45,   // 노란-골드
+  '목의':     22,   // 주황
+  '목의화':   22,
+  '장착':     140,  // 초록
+  '가구':     270,  // 보라
+  'ELEVATOR': 220,
+  '보온':     240,
+  '배선':     185,
+};
+
 function assignGjHues(data) {
   const gjList = [];
   const seen   = new Set();
@@ -434,18 +454,26 @@ function assignGjHues(data) {
     if (t.gj && !seen.has(t.gj)) { gjList.push(t.gj); seen.add(t.gj); }
   });
   const hueMap = {};
-  gjList.forEach((gj, i) => {
-    // 200(하늘)을 시작점으로 황금각(137.5°) 간격
-    hueMap[gj] = Math.round((200 + i * 137.5) % 360);
+  let autoIdx = 0;
+  gjList.forEach(gj => {
+    // 고정 hue 매핑: gj 이름이 key를 포함하면 해당 hue 사용
+    const fixedKey = Object.keys(GJ_FIXED_HUES).find(k => gj.includes(k));
+    if (fixedKey !== undefined) {
+      hueMap[gj] = GJ_FIXED_HUES[fixedKey];
+    } else {
+      // 미매칭: 200(하늘) 시작점으로 황금각(137.5°) 간격 자동 배정
+      hueMap[gj] = Math.round((200 + autoIdx * 137.5) % 360);
+      autoIdx++;
+    }
   });
   return hueMap;
 }
 
 // 특정 색조에서 idx번째 변형 색상 생성 (HSL)
-// 다크 배경 + 어두운 텍스트 모두 지원: S 60~85%, L 55~70%
+// 채도 높이고 명도 낮춰 엑셀 수준의 선명한 색상 구현
 function paletteColor(hue, idx) {
   const VARIANTS = [
-    [72, 63], [84, 57], [62, 70], [88, 54], [68, 67], [78, 60],
+    [90, 48], [85, 55], [92, 43], [80, 52], [88, 46], [82, 50],
   ];
   const [s, l] = VARIANTS[idx % VARIANTS.length];
   return `hsl(${hue},${s}%,${l}%)`;
@@ -765,20 +793,11 @@ function render() {
         const mgr = (task.manager || '').trim();
         const mgrSuffix = mgr && span >= 8 ? ` · ${mgr}` : '';
 
-        // 글씨 크기 고정 및 텍스트 잘림 처리 (1칸→1자, 2칸→2자, 이상→계산)
+        // 글씨 크기 고정 및 텍스트 잘림 처리 (1칸→1자, 2칸→2자, 이상→계산, … 없음)
         const maxChars = span <= 1 ? 1 : span === 2 ? 2 : Math.max(Math.floor((span * COL_W - 8) / FONT_SIZE_PX), 1);
         let displayText = fullText;
-        if (displayText.length > maxChars) {
-          displayText = span <= 2 ? displayText.substring(0, maxChars) : displayText.substring(0, maxChars - 1) + '…';
-        }
-        const startMark = task.started ? '<span class="start-mark"></span>' : '';
-        const endMark   = task.ended   ? '<span class="end-mark"></span>'   : '';
-        const label = `${startMark}<span style="font-size:${FONT_SIZE_PX}px;line-height:30px;">${ioBadge}${displayText}${mgrSuffix}</span>${endMark}`;
-
-        // 지연 항목 판별: 종료일이 오늘 이전이고 종료실적 없는 경우
-        const isOverdue = !task.ended && task.e < TODAY;
-        const overdueClass = isOverdue ? ' bar-overdue' : '';
-        const overdueAttr  = isOverdue ? ' data-overdue="true"' : '';
+        if (displayText.length > maxChars) displayText = displayText.substring(0, maxChars);
+        const label = `<span style="font-size:${FONT_SIZE_PX}px;line-height:30px;">${ioBadge}${displayText}${mgrSuffix}</span>`;
 
         // 툴팁 — 선내/외, 담당자, 진행상태 추가
         const extraLines = [
@@ -791,10 +810,12 @@ function render() {
           ? `${baseInfo}${extraLines ? '\n' + extraLines : ''}`
           : `🔒 편집 권한 없음\n${baseInfo}${extraLines ? '\n' + extraLines : ''}`;
 
-        html += `<td class="bar${ioClass}${overdueClass}" colspan="${span}" style="background:${barColor};"
+        html += `<td class="bar${ioClass}" colspan="${span}" style="background:${barColor};"
                    data-task-id="${task.id}" data-start="${task.s}"
                    data-end="${task.e}" data-area="${task.area}"
-                   ${overdueAttr} title="${title}">${label}</td>`;
+                   data-started="${task.started ? 'true' : 'false'}"
+                   data-ended="${task.ended ? 'true' : 'false'}"
+                   title="${title}">${label}</td>`;
         cursor = startIdx + span;
       }
 
@@ -828,8 +849,10 @@ function render() {
   updatePendingPanel();
   // 렌더 직후 오늘 날짜 셀이 가로 중앙에 오도록 스크롤
   scrollToToday();
-  // 지연 필터 상태 유지 (재렌더 후 재적용)
-  if (showOverdueOnly) _applyOverdueFilter();
+  // 실적 필터 상태 유지 (재렌더 후 재적용)
+  if (showActuals) _applyActualsFilter();
+  // iframe 높이 자동 확장 (수직 스크롤 제거)
+  autoResizeFrame();
 }
 
 // ══════════════════════════════════════════════
