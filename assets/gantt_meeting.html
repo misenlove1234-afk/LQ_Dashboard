@@ -1,6 +1,6 @@
 <!--
 ╔══════════════════════════════════════════════════════════════════╗
-║  파일   : assets/gantt_meeting.html                               ║
+║  파일   : assets/gantt_meeting.html                                ║
 ║  용도   : Streamlit 간트 편집 컴포넌트 (엑셀식 그리드)           ║
 ║  연동   : pages/proc_2.py 의 _render_gantt_component() 함수로 호출║
 ║                                                                   ║
@@ -21,7 +21,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: "Malgun Gothic", "맑은 고딕", -apple-system, sans-serif;
-  background: #0a1628;
+  background: #1a3252;
   color: #e2e8f0;
   padding: 12px;
 }
@@ -45,7 +45,7 @@ body {
 .gantt-wrap {
   position: relative;  /* 드래그 프리뷰 오버레이를 위해 필요 */
   overflow-x: auto; overflow-y: visible;
-  background: #0d1f3c;
+  background: #1c3660;
   border: 1px solid rgba(56,189,248,0.2);
   border-radius: 8px;
 }
@@ -76,17 +76,17 @@ body {
   font-family: 'Malgun Gothic', monospace;
   font-size: 10.5px;
   color: #e2e8f0;
-  background: #0d1f3c;
+  background: #1c3660;
   table-layout: fixed;
 }
 .excel-gantt th, .excel-gantt td {
   border: 1px solid rgba(56,189,248,0.10);
   padding: 0; text-align: center; vertical-align: middle;
-  height: 15px; min-width: 24px; max-width: 24px;
+  height: 30px; min-width: 24px; max-width: 24px;
   overflow: hidden; white-space: nowrap;
 }
 .excel-gantt .area-cell {
-  background: #1a3f7a; color: #e0f2fe; font-weight: 700;
+  background: #1e4a8c; color: #e0f2fe; font-weight: 700;
   text-align: center; padding: 2px 4px;
   min-width: 80px; max-width: 80px;
   position: sticky; left: 0; z-index: 5;
@@ -94,14 +94,14 @@ body {
   font-size: 10px;
 }
 .excel-gantt thead th {
-  background: #0f2847; color: #e2e8f0;
+  background: #1a3a6a; color: #e2e8f0;
   font-weight: 600; font-size: 9.5px; padding: 1px 0;
   position: sticky; z-index: 4;
 }
-.excel-gantt thead th.area-cell { z-index: 10; background: #1a3f7a; }
+.excel-gantt thead th.area-cell { z-index: 10; background: #1e4a8c; }
 .excel-gantt thead tr:nth-child(1) th { top: 0; }
-.excel-gantt thead tr:nth-child(2) th { top: 15px; }
-.excel-gantt thead tr:nth-child(3) th { top: 30px; }
+.excel-gantt thead tr:nth-child(2) th { top: 30px; }
+.excel-gantt thead tr:nth-child(3) th { top: 60px; }
 
 .excel-gantt td.saturday, .excel-gantt th.saturday {
   background: rgba(253,224,71,0.12) !important;
@@ -145,11 +145,22 @@ body {
 .excel-gantt td.bar.bar-inside  { border-left: 2px solid #3b82f6 !important; }
 .excel-gantt td.bar.bar-outside { border-left: 2px solid #f97316 !important; }
 
-/* 선외 행 area-cell 강조 */
+/* 선외 행 area-cell 강조 — 배경은 일반 area-cell과 동일하게 유지 */
 .excel-gantt .area-cell.outside-row {
   color: #fb923c !important;
-  background: rgba(249,115,22,0.08) !important;
   border-right: 2px solid rgba(249,115,22,0.4) !important;
+}
+
+/* 시작/종료 실적 마커 (체크표시 대체) */
+.start-mark {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 5px; background: #22c55e; opacity: 0.9;
+  pointer-events: none;
+}
+.end-mark {
+  position: absolute; right: 0; top: 0; bottom: 0;
+  width: 5px; background: #ef4444; opacity: 0.9;
+  pointer-events: none;
 }
 
 /* ── 막대 색상은 JavaScript에서 동적 배정 (공종=톤, 작업내용=개별 색) ── */
@@ -168,11 +179,11 @@ body {
   width: 100%; border-collapse: collapse; font-size: 0.82rem;
 }
 .pending-panel th {
-  background: #0a1628; color: #7dd3fc;
+  background: #1a3252; color: #7dd3fc;
   padding: 0.4rem; text-align: left;
 }
 .pending-panel td {
-  background: #0d1f3c; color: #e2e8f0;
+  background: #1c3660; color: #e2e8f0;
   padding: 0.4rem; border-bottom: 1px solid rgba(56,189,248,0.1);
 }
 .btn-row { margin-top: 0.8rem; display: flex; gap: 0.5rem; }
@@ -479,36 +490,39 @@ function render() {
   const dateIndex = {};
   dates.forEach((d,i) => { dateIndex[_dateKey(d)] = i; });
 
-  // 그룹별 레인 분배 (겹치면 별도 레인)
-  // ELEVATOR / 중앙계단 / STAIRWAY 계열은 최대 2행으로 제한
+  // 그룹별 레인 분배
+  // - 기본 3행 고정 (ELEVATOR/계단/STAIRWAY 계열은 2행 고정)
+  // - 4번째 작업이 겹치면 해당 구역만 4행으로 확장 (일반 구역에 한함)
   const groupLanes = {};
   groups.forEach(g => {
     const _gLower = g.toLowerCase().replace(/[\s\-_]/g, '');
-    const maxLanes = (_gLower.includes('elevator') || _gLower.includes('중앙계단') ||
-                      _gLower.includes('계단') || _gLower.includes('stairway')) ? 2 : Infinity;
+    const isElevType = _gLower.includes('elevator') || _gLower.includes('중앙계단') ||
+                       _gLower.includes('계단') || _gLower.includes('stairway');
+    const defaultLanes = isElevType ? 2 : 3;
+    const hardMax      = isElevType ? 2 : 4;  // 일반 구역: 최대 4행까지 확장
 
     const tasks = visibleData.filter(t => t[groupKey] === g);
     tasks.sort((x,y) => _parseLocalDate(x.s) - _parseLocalDate(y.s));
-    const lanes = [];
+    // 기본 행 수만큼 빈 레인 미리 생성 (데이터 없어도 행 높이 보장)
+    const lanes = Array.from({length: defaultLanes}, () => []);
     tasks.forEach(task => {
       let placed = false;
       for (const lane of lanes) {
-        // 가장 늦게 끝나는 task 의 종료일을 기준으로 비교
+        // 레인이 비었거나 가장 늦게 끝난 task 이후면 배치
         let laneMaxEndTs = -Infinity;
         for (const t of lane) {
           const ts = _parseLocalDate(t.e).getTime();
           if (ts > laneMaxEndTs) laneMaxEndTs = ts;
         }
-        // 종료일 == 시작일 이어도 같은 컬럼을 공유할 수 없으므로 strict (>)
         if (_parseLocalDate(task.s).getTime() > laneMaxEndTs) {
           lane.push(task); placed = true; break;
         }
       }
       if (!placed) {
-        if (lanes.length < maxLanes) {
-          lanes.push([task]);
+        if (lanes.length < hardMax) {
+          lanes.push([task]);  // 4행까지 확장 허용 (일반 구역)
         } else {
-          lanes[lanes.length - 1].push(task); // 최대 레인 초과분 → 마지막 레인에 병합
+          lanes[lanes.length - 1].push(task);  // 초과분은 마지막 레인에 병합
         }
       }
     });
@@ -614,9 +628,8 @@ function render() {
         if (span < 1) span = 1;
 
         const barColor  = colorMap[task.task] || '#94a3b8';
-        const labelSize = span < 2 ? '7px' : span < 4 ? '8.5px' : '10px';
         // 호선 모드: "작업내용 / 구역", 구역 모드: "작업내용"
-        const labelText = ROW_MODE === 'ship'
+        const fullText = ROW_MODE === 'ship'
           ? `${task.task} / ${task.area}`
           : task.task;
 
@@ -625,14 +638,22 @@ function render() {
         const ioClass = io === '내' || io === '선내' || io === 'I' ? ' bar-inside'
                       : io === '외' || io === '선외' || io === 'O' ? ' bar-outside' : '';
         const ioBadge = io && ioClass && span >= 3
-          ? `<span style="background:rgba(0,0,0,0.2);padding:0 1px;border-radius:2px;font-size:7px;margin-right:1px;">${io}</span>`
+          ? `<span style="background:rgba(0,0,0,0.2);padding:0 1px;border-radius:2px;font-size:12px;margin-right:1px;">${io}</span>`
           : '';
-        // 담당자 — bar 너비 충분할 때만 표시 (좁아진 열 폭 반영)
+        // 담당자 — bar 너비 충분할 때만 표시
         const mgr = (task.manager || '').trim();
         const mgrSuffix = mgr && span >= 8 ? ` · ${mgr}` : '';
 
-        const startedMark = task.started ? '<span style="color:#86efac;font-weight:900;margin-right:1px;">✓</span>' : '';
-        const label = `<span style="font-size:${labelSize};">${startedMark}${ioBadge}${labelText}${mgrSuffix}</span>`;
+        // 글씨 크기 고정 및 텍스트 잘림 처리 (1칸→1자, 2칸→2자, 이상→계산)
+        const FONT_SIZE = '18px';
+        const maxChars = span <= 1 ? 1 : span === 2 ? 2 : Math.max(Math.floor((span * 24 - 8) / 18), 1);
+        let displayText = fullText;
+        if (displayText.length > maxChars) {
+          displayText = span <= 2 ? displayText.substring(0, maxChars) : displayText.substring(0, maxChars - 1) + '…';
+        }
+        const startMark = task.started ? '<span class="start-mark"></span>' : '';
+        const endMark   = task.ended   ? '<span class="end-mark"></span>'   : '';
+        const label = `${startMark}<span style="font-size:${FONT_SIZE};line-height:30px;">${ioBadge}${displayText}${mgrSuffix}</span>${endMark}`;
 
         // 툴팁 — 선내/외, 담당자, 진행상태 추가
         const extraLines = [

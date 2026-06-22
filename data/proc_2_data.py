@@ -334,10 +334,14 @@ def get_gantt_data(filtered_df: pd.DataFrame, basis: str = "변경 계획") -> l
             raw_flag = str(row.get('표시여부', '') or '').strip().upper()
             show_flag = raw_flag if raw_flag in ('Y', 'N') else 'Y'
 
-        # 실적_C_착수 값 존재 여부 → 착수 완료 체크 아이콘 표시용
+        # 실적_C_착수/종료 값 존재 여부 → 간트 막대 좌/우 마커 표시용
         started = False
         if '실적_C_착수' in df.columns:
             started = pd.notna(row.get('실적_C_착수'))
+
+        ended = False
+        if '실적_C_종료' in df.columns:
+            ended = pd.notna(row.get('실적_C_종료'))
 
         tasks.append({
             'id':       str(row.get('작업ID', f'ROW_{idx}')),
@@ -354,6 +358,7 @@ def get_gantt_data(filtered_df: pd.DataFrame, basis: str = "변경 계획") -> l
             'status':   str(row.get('진행상태', '') or '').strip(),
             'showFlag': show_flag,
             'started':  started,
+            'ended':    ended,
         })
     return tasks
 
