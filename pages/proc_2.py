@@ -926,7 +926,7 @@ def render():
                 st.warning(f"⚠️ 선택한 조건에 해당하는 작업이 없습니다. ({gantt_basis} 기준 일자가 있는 행만 표시)")
             else:
                 _render_gantt_component(gantt_tasks, is_editable=effective_editable,
-                                        current_user=current_user, height=700,
+                                        current_user=current_user, height=1400,
                                         row_mode=row_mode)
 
         st.markdown('<hr style="border-color:rgba(56,189,248,0.15);">', unsafe_allow_html=True)

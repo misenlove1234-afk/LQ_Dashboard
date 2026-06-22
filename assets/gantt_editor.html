@@ -84,10 +84,21 @@ body {
   font-size: 0.85rem; color: #e2e8f0;
 }
 
+/* ── 컨트롤 버튼 행 — 상단 고정 ── */
+#ctrl-row {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bg-body);
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--border-area);
+}
+
 /* ── 그리드 컨테이너 ── */
 .gantt-wrap {
   position: relative;  /* 드래그 프리뷰 오버레이를 위해 필요 */
-  overflow-x: auto; overflow-y: visible;
+  overflow-x: auto;
+  overflow-y: clip;   /* clip: 스크롤 컨텍스트 생성 안 함 → thead sticky 정상 동작 */
   background: var(--bg-wrap);
   border: 1px solid var(--border-area);
   border-radius: 8px;
@@ -143,12 +154,22 @@ body {
 }
 .excel-gantt thead th.area-cell { z-index: 10; background: var(--bg-area); }
 .excel-gantt th.month-hdr { background: var(--bg-month) !important; color: var(--text-month) !important; }
-.excel-gantt thead tr:nth-child(1) th { top: 0; }
-.excel-gantt thead tr:nth-child(2) th { top: 30px; }
-.excel-gantt thead tr:nth-child(3) th { top: 60px; }
+.excel-gantt thead tr:nth-child(1) th { top: 40px; }
+.excel-gantt thead tr:nth-child(2) th { top: 70px; }
+.excel-gantt thead tr:nth-child(3) th { top: 100px; }
 
-.excel-gantt td.saturday, .excel-gantt th.saturday {
-  background: var(--holiday-bg) !important;
+/* 토요일/공휴일 — 데이터 셀은 투명, 헤더 셀만 황금 텍스트 + 옅은 배경 */
+.excel-gantt td.saturday {
+  background: var(--bg-row) !important;  /* 일반 셀과 동일 — 어두움 없음 */
+}
+.excel-gantt th.saturday {
+  background: rgba(253,224,71,0.28) !important;
+  color: #92400e !important;  /* 진한 황금 텍스트 */
+  font-weight: 700 !important;
+}
+body.light-theme .excel-gantt th.saturday {
+  background: rgba(253,224,71,0.55) !important;
+  color: #78350f !important;
 }
 .excel-gantt td.today, .excel-gantt th.today {
   background: var(--today-bg) !important;
@@ -164,9 +185,9 @@ body {
 .excel-gantt tbody tr.area-top-row.outside-top-row td {
   border-top: 3px solid var(--separator-outside) !important;
 }
-/* 일반 셀 경계선은 아주 옅게 (내부 그리드 노이즈 최소화) */
+/* 일반 셀 경계선 — CSS 변수로 테마별 자동 적용 */
 .excel-gantt tbody td:not(.bar):not(.area-cell) {
-  border-color: rgba(56,189,248,0.05) !important;
+  border-color: var(--border-grid) !important;
   background: var(--bg-row);
 }
 
@@ -428,6 +449,17 @@ function weekScroll(dir) {
   const wrap = document.getElementById('gantt-wrap');
   if (!wrap) return;
   wrap.scrollLeft += dir * 7 * COL_W;
+}
+
+// iframe 높이 자동 확장 — Streamlit postMessage 방식 (컨테이너도 함께 확장)
+function autoResizeFrame() {
+  requestAnimationFrame(() => {
+    try {
+      const h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) + 50;
+      // Streamlit 부모에 높이 변경 요청 (st.components.v1.html 지원)
+      window.parent.postMessage({ type: 'streamlit:setFrameHeight', height: h }, '*');
+    } catch(e) {}
+  });
 }
 
 // ══════════════════════════════════════════════
@@ -890,6 +922,8 @@ function render() {
   scrollToToday();
   // 실적 필터 상태 유지 (재렌더 후 재적용)
   if (showActuals) _applyActualsFilter();
+  // iframe 높이 자동 확장 — 전체 구역이 스크롤 없이 표시되도록
+  autoResizeFrame();
 }
 
 // ══════════════════════════════════════════════
