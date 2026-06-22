@@ -99,6 +99,11 @@ PROCESS_SUBMENUS = [
 
 SIDEBAR_PAGES = {"proc_2", "proc_3", "proc_4"}
 
+LEANING_CREW_PAGES = [
+    ("leaning_crew", "Leaning Crew 소개", "🚀"),
+]
+
+
 # ══════════════════════════════════════════════════════════
 #  4. 카드 데이터 로딩 함수 (캐시 적용)
 # ══════════════════════════════════════════════════════════
@@ -258,6 +263,7 @@ def render_navbar(current_url_path: str = ""):
                         {proc_links}
                     </div>
                 </div>
+                <a href="/leaning_crew" target="_self" class="nav-item" style="text-decoration:none; color:#38BDF8; font-weight:700;">🚀 Leaning Crew</a>
             </nav>
         </div>
 
@@ -740,9 +746,12 @@ page_home_obj = st.Page(render_home, title="홈", url_path="home", default=True)
 
 proc_page_objs = [st.Page(make_proc_page_func(k, n, i), title=n, url_path=k) for k, n, i in PROCESS_SUBMENUS]
 
+leaning_crew_page_objs = [st.Page(make_proc_page_func(k, n, i), title=n, url_path=k) for k, n, i in LEANING_CREW_PAGES]
+
 pages = {
     "메인": [page_home_obj],
     "공정 관리 상세": proc_page_objs,
+    "Leaning Crew": leaning_crew_page_objs,
 }
 
 pg = st.navigation(pages, position="sidebar")
