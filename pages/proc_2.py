@@ -1292,10 +1292,12 @@ def render():
         else:
             _render_gantt_component(
                 mtg_gantt_tasks,
-                is_editable=False,
+                is_editable=is_editable,
                 current_user=current_user,
                 height=900,
                 row_mode="area",
                 wrap_max_height="calc(100vh - 290px)",
                 template="gantt_meeting.html",
             )
+        if is_editable:
+            st.caption("💡 막대 드래그 후 [💾 저장] → JSON 다운로드 → '구역별 상세 현황' 탭 하단 **변경 내역 DB 반영**에 업로드하세요.")

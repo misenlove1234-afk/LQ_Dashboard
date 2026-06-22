@@ -21,7 +21,7 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   font-family: "Malgun Gothic", "맑은 고딕", -apple-system, sans-serif;
-  background: #112240;
+  background: #0a1628;
   color: #e2e8f0;
   padding: 12px;
 }
@@ -44,11 +44,10 @@ body {
 /* ── 그리드 컨테이너 ── */
 .gantt-wrap {
   position: relative;  /* 드래그 프리뷰 오버레이를 위해 필요 */
-  overflow-x: auto; overflow-y: auto;
+  overflow-x: auto; overflow-y: visible;
   background: #1a2f4a;
   border: 1px solid rgba(56,189,248,0.25);
   border-radius: 8px;
-  max-height: 640px;
 }
 
 /* 드래그 중 새 위치 프리뷰 오버레이 */
@@ -77,21 +76,21 @@ body {
   font-family: 'Malgun Gothic', monospace;
   font-size: 10.5px;
   color: #e2e8f0;
-  background: #1a2f4a;
+  background: #0d1f3c;
   table-layout: fixed;
 }
 .excel-gantt th, .excel-gantt td {
   border: 1px solid rgba(56,189,248,0.10);
   padding: 0; text-align: center; vertical-align: middle;
-  height: 30px; min-width: 32px; max-width: 32px;
+  height: 15px; min-width: 24px; max-width: 24px;
   overflow: hidden; white-space: nowrap;
 }
 .excel-gantt .area-cell {
-  background: #0a1628; color: #7dd3fc; font-weight: 600;
+  background: #1a3f7a; color: #e0f2fe; font-weight: 700;
   text-align: center; padding: 2px 4px;
   min-width: 80px; max-width: 80px;
   position: sticky; left: 0; z-index: 5;
-  border-right: 2px solid rgba(56,189,248,0.3);
+  border-right: 2px solid rgba(56,189,248,0.4);
   font-size: 10px;
 }
 .excel-gantt thead th {
@@ -99,10 +98,10 @@ body {
   font-weight: 600; font-size: 9.5px; padding: 1px 0;
   position: sticky; z-index: 4;
 }
-.excel-gantt thead th.area-cell { z-index: 10; background: #0a1628; }
+.excel-gantt thead th.area-cell { z-index: 10; background: #1a3f7a; }
 .excel-gantt thead tr:nth-child(1) th { top: 0; }
-.excel-gantt thead tr:nth-child(2) th { top: 30px; }
-.excel-gantt thead tr:nth-child(3) th { top: 60px; }
+.excel-gantt thead tr:nth-child(2) th { top: 15px; }
+.excel-gantt thead tr:nth-child(3) th { top: 30px; }
 
 .excel-gantt td.saturday, .excel-gantt th.saturday {
   background: rgba(253,224,71,0.12) !important;
@@ -114,11 +113,11 @@ body {
 
 /* ── Deck 구역 경계선 (구역 첫 행 상단에 굵은 구분선) ── */
 .excel-gantt tbody tr.area-top-row td {
-  border-top: 3px solid #38bdf8 !important;
+  border-top: 2px solid rgba(56,189,248,0.45) !important;
 }
 /* 선외(Outside) 구역 첫 행 — 주황색 구분선 */
 .excel-gantt tbody tr.area-top-row.outside-top-row td {
-  border-top: 3px solid #fb923c !important;
+  border-top: 2px solid rgba(249,115,22,0.55) !important;
 }
 /* 일반 셀 경계선은 아주 옅게 (내부 그리드 노이즈 최소화) */
 .excel-gantt tbody td:not(.bar):not(.area-cell) {
@@ -146,16 +145,11 @@ body {
 .excel-gantt td.bar.bar-inside  { border-left: 2px solid #3b82f6 !important; }
 .excel-gantt td.bar.bar-outside { border-left: 2px solid #f97316 !important; }
 
-/* 선외 행 area-cell 강조 — 불투명 */
+/* 선외 행 area-cell 강조 */
 .excel-gantt .area-cell.outside-row {
-  color: #fff7ed !important;
-  background: rgba(194,65,12,0.85) !important;
-  border-right: 3px solid #fb923c !important;
-}
-
-/* In/Outside 영향 범위 — DK 구역 배경 하이라이트 (20% 가시도, 거의 투명) */
-.excel-gantt td.inout-hl:not(.bar) {
-  background: rgba(249,115,22,0.20) !important;
+  color: #fb923c !important;
+  background: rgba(249,115,22,0.08) !important;
+  border-right: 2px solid rgba(249,115,22,0.4) !important;
 }
 
 /* ── 막대 색상은 JavaScript에서 동적 배정 (공종=톤, 작업내용=개별 색) ── */
@@ -216,6 +210,15 @@ body {
   📊 공정 타임라인 — 막대를 드래그하여 일정을 조정하세요
 </div>
 
+<!-- ── 숨기기 토글 버튼 ── -->
+<div id="toggle-row" style="margin-bottom:0.5rem;">
+  <button id="btn-toggle-hidden" onclick="toggleHidden()"
+    style="background:#162d50;color:#94a3b8;border:1px solid rgba(56,189,248,0.3);
+           padding:4px 12px;border-radius:4px;cursor:pointer;font-size:0.82rem;">
+    숨기기 활성화
+  </button>
+</div>
+
 <!-- ── 그리드 ── -->
 <div id="gantt-wrap" class="gantt-wrap">
   <table id="gantt-grid" class="excel-gantt"></table>
@@ -233,11 +236,57 @@ const ganttData         = /*__GANTT_DATA__*/[];
 const ganttDataOriginal = JSON.parse(JSON.stringify(ganttData));
 const TODAY             = '__TODAY_DATE__';
 const IS_EDITABLE       = __IS_EDITABLE__;
+
+// 대한민국 공휴일 (2024-2027) — 토요일과 동일한 색 처리
+const HOLIDAYS = new Set([
+  // ─ 고정 공휴일 ─
+  '2024-01-01','2024-03-01','2024-05-05','2024-06-06','2024-08-15','2024-10-03','2024-10-09','2024-12-25',
+  '2025-01-01',
+  '2025-03-01','2025-03-03',   // 삼일절 대체 (3/1=토→3/3=월)
+  '2025-05-05','2025-05-06',   // 어린이날 + 부처님오신날 대체
+  '2025-06-06','2025-08-15','2025-10-03','2025-10-09','2025-12-25',
+  '2026-01-01',
+  '2026-03-01','2026-03-02',   // 삼일절 대체 (3/1=일→3/2=월)
+  '2026-05-05','2026-06-06',
+  '2026-08-15','2026-08-17',   // 광복절 대체 (8/15=토→8/17=월)
+  '2026-10-03','2026-10-05',   // 개천절 대체 (10/3=토→10/5=월)
+  '2026-10-09','2026-12-25',
+  '2027-01-01','2027-03-01','2027-05-05','2027-06-06','2027-08-15','2027-10-03','2027-10-09','2027-12-25',
+  // ─ 설날 (전날·당일·다음날) ─
+  '2024-02-09','2024-02-10','2024-02-11',
+  '2025-01-28','2025-01-29','2025-01-30',
+  '2026-02-16','2026-02-17','2026-02-18',
+  '2027-02-06','2027-02-07','2027-02-08',
+  // ─ 부처님오신날 ─
+  '2024-05-15',
+  '2026-05-24',
+  '2027-05-13',
+  // ─ 추석 (전날·당일·다음날) ─
+  '2024-09-16','2024-09-17','2024-09-18',
+  '2025-10-05','2025-10-06','2025-10-07','2025-10-08',
+  '2026-09-24','2026-09-25','2026-09-26',
+  '2027-09-14','2027-09-15','2027-09-16',
+]);
 const CURRENT_USER      = '__CURRENT_USER__';
 const ROW_MODE          = '__ROW_MODE__';  // 'area' | 'ship'
 
 // 변경 내역 누적
 let pendingChanges = [];
+
+// 숨기기 작업 표시 상태 (false: showFlag='Y'만 표시, true: 전체 표시)
+let showHidden = false;
+
+function toggleHidden() {
+  showHidden = !showHidden;
+  const btn = document.getElementById('btn-toggle-hidden');
+  if (btn) {
+    btn.textContent    = showHidden ? '숨기기 비활성화' : '숨기기 활성화';
+    btn.style.color    = showHidden ? '#fbbf24' : '#94a3b8';
+    btn.style.borderColor = showHidden ? 'rgba(251,191,36,0.5)' : 'rgba(56,189,248,0.3)';
+    btn.style.background  = showHidden ? '#3d2a00' : '#162d50';
+  }
+  render();
+}
 
 // ══════════════════════════════════════════════
 // 동적 색상 시스템
@@ -391,20 +440,32 @@ function render() {
     msgEl.innerHTML      = '⚠️ 표시할 작업 데이터가 없습니다.';
     return;
   }
+
+  // 숨기기 필터: showHidden=false이면 showFlag='Y' 작업만 표시
+  const visibleData = showHidden
+    ? ganttData
+    : ganttData.filter(t => !t.showFlag || t.showFlag.toUpperCase() === 'Y');
+
+  if (visibleData.length === 0) {
+    wrapEl.style.display = 'none';
+    msgEl.style.display  = 'flex';
+    msgEl.innerHTML      = '⚠️ 표시할 작업이 없습니다. 위 <strong style="color:#7dd3fc;">숨기기 활성화</strong> 버튼으로 숨김 작업을 볼 수 있습니다.';
+    return;
+  }
   wrapEl.style.display = 'block';
   msgEl.style.display  = 'none';
 
   // 그룹 키 (row_mode에 따라 구역 or 호선)
   const groupKey  = ROW_MODE === 'ship' ? 'proj' : 'area';
   const groupHdr  = ROW_MODE === 'ship' ? '호선' : '구역 / 호선';
-  const groupsInData = [...new Set(ganttData.map(t => t[groupKey]))];
+  const groupsInData = [...new Set(visibleData.map(t => t[groupKey]))];
   const groups = ROW_MODE === 'ship'
       ? groupsInData.sort((a,b) => String(a).localeCompare(String(b)))
       : sortAreas(groupsInData);
 
   // 날짜 범위 (일요일 제외) — 로컬 자정 기준 반복으로 timezone-safe
-  const allStartsLocal = ganttData.map(t => _parseLocalDate(t.s).getTime());
-  const allEndsLocal   = ganttData.map(t => _parseLocalDate(t.e).getTime());
+  const allStartsLocal = visibleData.map(t => _parseLocalDate(t.s).getTime());
+  const allEndsLocal   = visibleData.map(t => _parseLocalDate(t.e).getTime());
   const minStart = new Date(Math.min(...allStartsLocal));
   const maxEnd   = new Date(Math.max(...allEndsLocal));
   const startCur = new Date(minStart.getFullYear(), minStart.getMonth(), minStart.getDate() - 3);
@@ -418,22 +479,36 @@ function render() {
   const dateIndex = {};
   dates.forEach((d,i) => { dateIndex[_dateKey(d)] = i; });
 
-  // 그룹별 레인 분배 — 구역당 3행 고정, 1작업=1행
-  const LANES_PER_GROUP = 3;
+  // 그룹별 레인 분배 (겹치면 별도 레인)
+  // ELEVATOR / 중앙계단 / STAIRWAY 계열은 최대 2행으로 제한
   const groupLanes = {};
   groups.forEach(g => {
-    const tasks = ganttData.filter(t => t[groupKey] === g);
+    const _gLower = g.toLowerCase().replace(/[\s\-_]/g, '');
+    const maxLanes = (_gLower.includes('elevator') || _gLower.includes('중앙계단') ||
+                      _gLower.includes('계단') || _gLower.includes('stairway')) ? 2 : Infinity;
+
+    const tasks = visibleData.filter(t => t[groupKey] === g);
     tasks.sort((x,y) => _parseLocalDate(x.s) - _parseLocalDate(y.s));
-    const lanes = [[], [], []];
+    const lanes = [];
     tasks.forEach(task => {
-      for (let i = 0; i < LANES_PER_GROUP; i++) {
+      let placed = false;
+      for (const lane of lanes) {
+        // 가장 늦게 끝나는 task 의 종료일을 기준으로 비교
         let laneMaxEndTs = -Infinity;
-        for (const t of lanes[i]) {
+        for (const t of lane) {
           const ts = _parseLocalDate(t.e).getTime();
           if (ts > laneMaxEndTs) laneMaxEndTs = ts;
         }
-        if (laneMaxEndTs === -Infinity || _parseLocalDate(task.s).getTime() > laneMaxEndTs) {
-          lanes[i].push(task); break;
+        // 종료일 == 시작일 이어도 같은 컬럼을 공유할 수 없으므로 strict (>)
+        if (_parseLocalDate(task.s).getTime() > laneMaxEndTs) {
+          lane.push(task); placed = true; break;
+        }
+      }
+      if (!placed) {
+        if (lanes.length < maxLanes) {
+          lanes.push([task]);
+        } else {
+          lanes[lanes.length - 1].push(task); // 최대 레인 초과분 → 마지막 레인에 병합
         }
       }
     });
@@ -465,7 +540,7 @@ function render() {
     const day = d.getDay();
     const dstr = _dateKey(d);
     const cls = [];
-    if (day === 6) cls.push('saturday');
+    if (day === 6 || HOLIDAYS.has(dstr)) cls.push('saturday');
     if (dstr === TODAY) cls.push('today');
     html += `<th class="${cls.join(' ')}">${String(d.getDate()).padStart(2,'0')}</th>`;
   });
@@ -477,7 +552,7 @@ function render() {
     const day = d.getDay();
     const dstr = _dateKey(d);
     const cls = [];
-    if (day === 6) cls.push('saturday');
+    if (day === 6 || HOLIDAYS.has(dstr)) cls.push('saturday');
     if (dstr === TODAY) cls.push('today');
     html += `<th class="${cls.join(' ')}">${WEEKDAYS[day]}</th>`;
   });
@@ -505,7 +580,7 @@ function render() {
           headerHtml = `<div style="font-weight:700; font-size:11px;">${group}</div>`;
         } else {
           // 구역 모드: 구역 + 해당 구역의 호선 리스트
-          const projs = [...new Set(ganttData.filter(t => t.area === group).map(t => t.proj))];
+          const projs = [...new Set(visibleData.filter(t => t.area === group).map(t => t.proj))];
           headerHtml = `
             <div style="font-weight:700; font-size:11px;">${group}</div>
             <div style="font-size:8px; color:#94a3b8; margin-top:1px;">${projs.join(', ')}</div>
@@ -524,7 +599,7 @@ function render() {
           const d = dates[cursor];
           const dstr = _dateKey(d);
           const cls = [];
-          if (d.getDay() === 6) cls.push('saturday');
+          if (d.getDay() === 6 || HOLIDAYS.has(dstr)) cls.push('saturday');
           if (dstr === TODAY) cls.push('today');
           html += `<td class="${cls.join(' ')}" data-date="${dstr}" data-area="${group}" data-lane="${laneIdx}"></td>`;
           cursor++;
@@ -539,6 +614,7 @@ function render() {
         if (span < 1) span = 1;
 
         const barColor  = colorMap[task.task] || '#94a3b8';
+        const labelSize = span < 2 ? '7px' : span < 4 ? '8.5px' : '10px';
         // 호선 모드: "작업내용 / 구역", 구역 모드: "작업내용"
         const labelText = ROW_MODE === 'ship'
           ? `${task.task} / ${task.area}`
@@ -555,7 +631,8 @@ function render() {
         const mgr = (task.manager || '').trim();
         const mgrSuffix = mgr && span >= 8 ? ` · ${mgr}` : '';
 
-        const label = `<span style="font-size:10px;">${ioBadge}${labelText}${mgrSuffix}</span>`;
+        const startedMark = task.started ? '<span style="color:#86efac;font-weight:900;margin-right:1px;">✓</span>' : '';
+        const label = `<span style="font-size:${labelSize};">${startedMark}${ioBadge}${labelText}${mgrSuffix}</span>`;
 
         // 툴팁 — 선내/외, 담당자, 진행상태 추가
         const extraLines = [
@@ -579,7 +656,7 @@ function render() {
         const d = dates[cursor];
         const dstr = _dateKey(d);
         const cls = [];
-        if (d.getDay() === 6) cls.push('saturday');
+        if (d.getDay() === 6 || HOLIDAYS.has(dstr)) cls.push('saturday');
         if (dstr === TODAY) cls.push('today');
         html += `<td class="${cls.join(' ')}" data-date="${dstr}" data-area="${group}" data-lane="${laneIdx}"></td>`;
         cursor++;
@@ -605,8 +682,6 @@ function render() {
   updatePendingPanel();
   // 렌더 직후 오늘 날짜 셀이 가로 중앙에 오도록 스크롤
   scrollToToday();
-  // In/Outside → NAV-DK~UPP-DK 범위 배경 하이라이트
-  renderInOutsideOverlays();
 }
 
 // ══════════════════════════════════════════════
@@ -623,54 +698,6 @@ function scrollToToday() {
   const cellRect = todayCell.getBoundingClientRect();
   const cellCenterInWrap = (cellRect.left - wrapRect.left) + wrap.scrollLeft + (cellRect.width / 2);
   wrap.scrollLeft = cellCenterInWrap - (wrap.clientWidth / 2);
-}
-
-// ══════════════════════════════════════════════
-// In/Outside → NAV-DK ~ UPP-DK 범위 배경 하이라이트
-// ══════════════════════════════════════════════
-function renderInOutsideOverlays() {
-  document.querySelectorAll('#gantt-grid .inout-hl').forEach(el => {
-    el.classList.remove('inout-hl');
-  });
-
-  const outsideAreaCells = document.querySelectorAll('#gantt-grid td.area-cell.outside-row');
-  if (!outsideAreaCells.length) return;
-
-  const outsideRanges = [];
-  outsideAreaCells.forEach(areaCell => {
-    const rowspan = parseInt(areaCell.getAttribute('rowspan') || '1', 10);
-    let tr = areaCell.closest('tr');
-    for (let i = 0; i < rowspan; i++) {
-      if (!tr) break;
-      tr.querySelectorAll('td.bar').forEach(bar => {
-        const s = bar.dataset.start, e = bar.dataset.end;
-        if (s && e) outsideRanges.push({ start: s, end: e });
-      });
-      tr = tr.nextElementSibling;
-    }
-  });
-  if (!outsideRanges.length) return;
-
-  const DK_TARGETS = ['NAV-DK','UPP-DK','A-DK','B-DK','C-DK','D-DK','E-DK','F-DK'];
-  document.querySelectorAll('#gantt-grid td.area-cell').forEach(areaCell => {
-    const nm = areaCell.textContent.trim().split('\n')[0].trim();
-    if (!DK_TARGETS.some(dk => nm === dk || nm.startsWith(dk + ' '))) return;
-    const rowspan = parseInt(areaCell.getAttribute('rowspan') || '1', 10);
-    let tr = areaCell.closest('tr');
-    for (let i = 0; i < rowspan; i++) {
-      if (!tr) break;
-      tr.querySelectorAll('td[data-date]').forEach(cell => {
-        const cd = cell.dataset.date;
-        for (const r of outsideRanges) {
-          if (cd >= r.start && cd <= r.end) {
-            cell.classList.add('inout-hl');
-            break;
-          }
-        }
-      });
-      tr = tr.nextElementSibling;
-    }
-  });
 }
 
 // ══════════════════════════════════════════════

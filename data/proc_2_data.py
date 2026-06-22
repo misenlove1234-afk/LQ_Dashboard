@@ -318,9 +318,8 @@ def get_gantt_data(filtered_df: pd.DataFrame, basis: str = "변경 계획") -> l
         return []
     df = df.dropna(subset=[s_col, e_col])
 
-    # 표시여부 컬럼이 있으면 'Y' 만 간트에 노출 (대소문자/공백 허용)
-    if '표시여부' in df.columns:
-        df = df[df['표시여부'].astype(str).str.strip().str.upper() == 'Y']
+    # 표시여부가 없는 행은 'Y' 로 간주 — JS에서 showFlag 기준으로 숨김 처리
+    # (여기서 필터링하지 않고 전체 전달, 숨기기 버튼으로 클라이언트 측 토글)
 
     tasks = []
     for idx, row in df.iterrows():
@@ -328,6 +327,18 @@ def get_gantt_data(filtered_df: pd.DataFrame, basis: str = "변경 계획") -> l
         stg_str = str(row.get('STG', '')).strip().upper()
         is_30stg = stg_str in ('30STG', '30')
         _area_val = row.get('중분류') if (is_30stg and pd.notna(row.get('중분류'))) else row.get('대분류', '')
+
+        # 표시여부 — Y/N 그대로 전달 (없으면 'Y' 기본)
+        show_flag = 'Y'
+        if '표시여부' in df.columns:
+            raw_flag = str(row.get('표시여부', '') or '').strip().upper()
+            show_flag = raw_flag if raw_flag in ('Y', 'N') else 'Y'
+
+        # 실적_C_착수 값 존재 여부 → 착수 완료 체크 아이콘 표시용
+        started = False
+        if '실적_C_착수' in df.columns:
+            started = pd.notna(row.get('실적_C_착수'))
+
         tasks.append({
             'id':       str(row.get('작업ID', f'ROW_{idx}')),
             'proj':     str(row['프로젝트']),
@@ -341,6 +352,8 @@ def get_gantt_data(filtered_df: pd.DataFrame, basis: str = "변경 계획") -> l
             'inOut':    str(row.get('내외구분', '') or '').strip(),
             'manager':  str(row.get('담당자',   '') or '').strip(),
             'status':   str(row.get('진행상태', '') or '').strip(),
+            'showFlag': show_flag,
+            'started':  started,
         })
     return tasks
 
