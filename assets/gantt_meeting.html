@@ -24,22 +24,22 @@
 :root {
   --bg-body:    #1a3252;
   --bg-wrap:    #1c3660;
-  --bg-area:    #1e4a8c;
-  --bg-header:  #1a3a6a;
-  --bg-month:   #1e3a5f;
+  --bg-area:    #5b9bd5;
+  --bg-header:  #7ab3e8;
+  --bg-month:   #4a8fd4;
   --bg-legend:  rgba(15,35,65,0.4);
   --text-main:  #e2e8f0;
-  --text-area:  #e0f2fe;
-  --text-header: #e2e8f0;
-  --text-month: #7dd3fc;
+  --text-area:  #000000;
+  --text-header: #000000;
+  --text-month: #000000;
   --bg-row:     transparent;
-  --border-grid: rgba(56,189,248,0.10);
-  --border-area: rgba(56,189,248,0.4);
+  --border-grid: rgba(56,189,248,0.40);
+  --border-area: rgba(56,189,248,0.70);
   --holiday-bg: rgba(253,224,71,0.12);
   --today-bg:   rgba(244,63,94,0.18);
   --col-w:      24px;
-  --separator-color:   rgba(56,189,248,0.65);
-  --separator-outside: rgba(249,115,22,0.7);
+  --separator-color:   rgba(56,189,248,0.90);
+  --separator-outside: rgba(249,115,22,0.95);
 }
 /* ── 라이트 테마 오버라이드 ── */
 body.light-theme {
@@ -50,12 +50,12 @@ body.light-theme {
   --bg-month:   #93c5fd;
   --bg-legend:  rgba(30,74,140,0.08);
   --text-main:  #1e293b;
-  --text-area:  #1e293b;
-  --text-header: #1e293b;
-  --text-month: #1e3a5f;
+  --text-area:  #000000;
+  --text-header: #000000;
+  --text-month: #000000;
   --bg-row:     #eff6ff;
-  --border-grid: rgba(100,160,220,0.25);
-  --border-area: rgba(56,189,248,0.55);
+  --border-grid: rgba(0,0,0,0.30);
+  --border-area: rgba(0,0,0,0.50);
   --holiday-bg: rgba(202,138,4,0.20);
   --today-bg:   rgba(220,38,38,0.22);
   --separator-color:   #1d4ed8;
@@ -158,11 +158,11 @@ body {
 
 /* ── Deck 구역 경계선 (구역 첫 행 상단에 굵은 구분선) ── */
 .excel-gantt tbody tr.area-top-row td {
-  border-top: 2px solid var(--separator-color) !important;
+  border-top: 3px solid var(--separator-color) !important;
 }
 /* 선외(Outside) 구역 첫 행 — 주황색 구분선 */
 .excel-gantt tbody tr.area-top-row.outside-top-row td {
-  border-top: 2px solid var(--separator-outside) !important;
+  border-top: 3px solid var(--separator-outside) !important;
 }
 /* 일반 셀 경계선은 아주 옅게 (내부 그리드 노이즈 최소화) */
 .excel-gantt tbody td:not(.bar):not(.area-cell) {
@@ -174,9 +174,13 @@ body {
 .excel-gantt td.bar {
   color: #0a1628 !important; font-weight: 700;
   padding: 0 2px; font-size: 10px;
-  border: 1px solid rgba(0,0,0,0.15);
+  border: 2px solid rgba(0,0,0,0.40);
   cursor: move; text-overflow: ellipsis;
   position: relative; user-select: none;
+}
+/* 흰 글씨가 필요한 어두운 배경 막대 */
+.excel-gantt td.bar[data-text-light="true"] {
+  color: #ffffff !important;
 }
 .excel-gantt td.bar:hover { outline: 2px solid #fbbf24; outline-offset: -2px; }
 .excel-gantt td.bar:hover::before, .excel-gantt td.bar:hover::after {
@@ -240,15 +244,8 @@ body {
 </head>
 <body>
 
-<!-- ── 범례 (공종 항목은 JavaScript에서 동적 생성) ── -->
-<div id="legend-row" class="legend-row">
-  <span class="legend-item" style="margin-left:auto;">
-    <span class="legend-box" style="background:rgba(253,224,71,0.3); border:1px solid #fbbf24;"></span>토요일
-  </span>
-  <span class="legend-item">
-    <span class="legend-box" style="background:rgba(244,63,94,0.3); border:1px solid #f43f5e;"></span>오늘
-  </span>
-</div>
+<!-- ── 범례 (숨김 처리) ── -->
+<div id="legend-row" style="display:none;"></div>
 
 <!-- ── 상태 표시 ── -->
 <div id="status-bar" class="status-bar">
@@ -285,6 +282,14 @@ body {
            padding:4px 12px;border-radius:4px;cursor:pointer;font-size:0.82rem;">
     실적 보기
   </button>
+
+  <span style="color:#475569;font-size:0.78rem;margin-left:0.6rem;">이동:</span>
+  <button onclick="weekScroll(-1)"
+    style="background:#162d50;color:#94a3b8;border:1px solid rgba(56,189,248,0.3);
+           padding:4px 10px;border-radius:4px;cursor:pointer;font-size:0.82rem;">◀ 1주 전</button>
+  <button onclick="weekScroll(1)"
+    style="background:#162d50;color:#94a3b8;border:1px solid rgba(56,189,248,0.3);
+           padding:4px 10px;border-radius:4px;cursor:pointer;font-size:0.82rem;">1주 후 ▶</button>
 </div>
 
 <!-- ── 그리드 ── -->
@@ -418,13 +423,11 @@ function _applyActualsFilter() {
   });
 }
 
-function autoResizeFrame() {
-  requestAnimationFrame(() => {
-    try {
-      const h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight) + 30;
-      if (window.frameElement) window.frameElement.style.height = h + 'px';
-    } catch(e) {}
-  });
+// 일주일씩 가로 스크롤 (dir: -1=이전주, 1=다음주)
+function weekScroll(dir) {
+  const wrap = document.getElementById('gantt-wrap');
+  if (!wrap) return;
+  wrap.scrollLeft += dir * 7 * COL_W;
 }
 
 // ══════════════════════════════════════════════
@@ -479,19 +482,54 @@ function paletteColor(hue, idx) {
   return `hsl(${hue},${s}%,${l}%)`;
 }
 
-// 작업내용 기준 색상 맵 (키: task명 — 구역·공종 무관, 같은 작업명=같은 색)
+// 키워드 → 정확한 색상 매핑 (공종명 또는 작업명에 포함되면 우선 적용)
+// light: true → 흰 글씨 필요 (어두운 배경)
+const GJ_KEYWORD_EXACT = [
+  { kw: '선각검사', bg: '#111111', light: true },
+  { kw: 'B/P',      bg: '#111111', light: true },
+  { kw: '배선',     bg: '#7c3aed' },  // 보라
+  { kw: '결선',     bg: '#1d4ed8' },  // 파랑
+  { kw: '목의화기', bg: '#38bdf8' },  // 하늘색
+  { kw: '보온',     bg: '#f472b6' },  // 핑크 (스프레이 보온 포함)
+  { kw: '도장',     bg: '#fcd5a8' },  // 연한 살구색
+  { kw: '판넬',     bg: '#86efac' },  // 연두색
+  { kw: '가구',     bg: '#16a34a', light: true },  // 초록
+  { kw: '장판',     bg: '#16a34a', light: true },
+  { kw: '스커트',   bg: '#16a34a', light: true },
+];
+
+function _getExactColor(gj, task) {
+  // 작업내용(task) 우선 → 공종(gj) 순으로 체크
+  for (const entry of GJ_KEYWORD_EXACT) {
+    if ((task || '').includes(entry.kw)) return entry;
+  }
+  for (const entry of GJ_KEYWORD_EXACT) {
+    if ((gj || '').includes(entry.kw)) return entry;
+  }
+  return null;
+}
+
+// 작업내용 기준 색상 맵 + 흰글씨 필요 여부 맵
 function buildColorMap(data, gjHueMap) {
-  const map   = {};
+  const colorMap    = {};
+  const lightTextMap = {};
   const gjIdx = {};
   data.forEach(t => {
-    if (!map[t.task]) {
-      const hue    = gjHueMap[t.gj] ?? 0;
-      const idx    = gjIdx[t.gj] ?? 0;
-      map[t.task]  = paletteColor(hue, idx);
-      gjIdx[t.gj]  = idx + 1;
+    if (!colorMap[t.task]) {
+      const exact = _getExactColor(t.gj, t.task);
+      if (exact) {
+        colorMap[t.task]    = exact.bg;
+        lightTextMap[t.task] = !!exact.light;
+      } else {
+        const hue          = gjHueMap[t.gj] ?? 0;
+        const idx          = gjIdx[t.gj] ?? 0;
+        colorMap[t.task]   = paletteColor(hue, idx);
+        lightTextMap[t.task] = false;
+        gjIdx[t.gj]        = idx + 1;
+      }
     }
   });
-  return map;
+  return { colorMap, lightTextMap };
 }
 
 // 범례 동적 렌더링 (공종 목록을 데이터에서 읽어 생성)
@@ -518,8 +556,8 @@ function renderLegend(gjHueMap) {
   el.innerHTML = html + staticSuffix;
 }
 
-const gjHues   = assignGjHues(ganttData);
-const colorMap = buildColorMap(ganttData, gjHues);
+const gjHues                    = assignGjHues(ganttData);
+const { colorMap, lightTextMap } = buildColorMap(ganttData, gjHues);
 
 // ══════════════════════════════════════════════
 // Y축 구역 정렬 함수
@@ -810,12 +848,13 @@ function render() {
           ? `${baseInfo}${extraLines ? '\n' + extraLines : ''}`
           : `🔒 편집 권한 없음\n${baseInfo}${extraLines ? '\n' + extraLines : ''}`;
 
+        const textLight = lightTextMap[task.task] ? ' data-text-light="true"' : '';
         html += `<td class="bar${ioClass}" colspan="${span}" style="background:${barColor};"
                    data-task-id="${task.id}" data-start="${task.s}"
                    data-end="${task.e}" data-area="${task.area}"
                    data-started="${task.started ? 'true' : 'false'}"
                    data-ended="${task.ended ? 'true' : 'false'}"
-                   title="${title}">${label}</td>`;
+                   ${textLight} title="${title}">${label}</td>`;
         cursor = startIdx + span;
       }
 
@@ -851,8 +890,6 @@ function render() {
   scrollToToday();
   // 실적 필터 상태 유지 (재렌더 후 재적용)
   if (showActuals) _applyActualsFilter();
-  // iframe 높이 자동 확장 (수직 스크롤 제거)
-  autoResizeFrame();
 }
 
 // ══════════════════════════════════════════════
@@ -1171,7 +1208,6 @@ function cancelGanttChanges() {
 }
 
 // 초기 렌더링
-renderLegend(gjHues);
 render();
 </script>
 
