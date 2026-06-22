@@ -36,6 +36,7 @@ TABLE_AUTH     = "lq_proc2_3"          # ★ 간트 편집 권한 테이블 (없
 TABLE_SUNPYO   = "dbo.lq_kpi5_1"      # 선표 (탑재착수 등 마일스톤 조회)
 TABLE_MEMO     = "lq_proc2_memo"       # ★ 공정 메모 (없으면 자동 생성)
 TABLE_MGR      = "lq_proc2_mgr"        # ★ 프로젝트 담당자 (없으면 자동 생성)
+TABLE_TAPJAE   = "lq_proc2_tapjae_yn"  # ★ 거주구 탑재완료 여부 (없으면 자동 생성)
 
 
 # ══════════════════════════════════════════════
@@ -923,3 +924,42 @@ def get_project_date_range(df: pd.DataFrame, 프로젝트: str):
     if pd.isna(s) or pd.isna(e):
         return None, None
     return s.date(), e.date()
+
+
+# ══════════════════════════════════════════════
+#  ★ 13. 거주구 탑재완료 여부 (lq_proc2_tapjae_yn)
+# ══════════════════════════════════════════════
+def ensure_tapjae_table() -> bool:
+    ddl = f"""
+    IF OBJECT_ID('{TABLE_TAPJAE}', 'U') IS NULL
+    BEGIN
+        CREATE TABLE [{TABLE_TAPJAE}] (
+            프로젝트  NVARCHAR(100) PRIMARY KEY,
+            탑재완료  BIT           NOT NULL DEFAULT 0,
+            수정일시  DATETIME2     DEFAULT GETDATE()
+        );
+    END
+    """
+    return execute_query(ddl)
+
+
+def get_all_tapjae_status() -> dict:
+    """전체 프로젝트 탑재완료 여부를 dict로 반환. {프로젝트: True/False}"""
+    ensure_tapjae_table()
+    df = run_query(f"SELECT 프로젝트, 탑재완료 FROM [{TABLE_TAPJAE}]")
+    if df is None or df.empty:
+        return {}
+    return {str(row['프로젝트']): bool(row['탑재완료']) for _, row in df.iterrows()}
+
+
+def set_tapjae_status(프로젝트: str, 완료: bool) -> bool:
+    """프로젝트 탑재완료 여부 저장 (없으면 INSERT, 있으면 UPDATE)."""
+    ensure_tapjae_table()
+    val = 1 if 완료 else 0
+    return execute_query(
+        f"MERGE [{TABLE_TAPJAE}] AS t "
+        f"USING (SELECT ? AS p) AS s ON t.프로젝트 = s.p "
+        f"WHEN MATCHED THEN UPDATE SET 탑재완료=?, 수정일시=GETDATE() "
+        f"WHEN NOT MATCHED THEN INSERT (프로젝트, 탑재완료) VALUES (?, ?);",
+        (프로젝트, val, 프로젝트, val)
+    )

@@ -48,6 +48,7 @@ from data.proc_2_data import (
     add_memo, get_memos, delete_memo, get_memo_photo,
     get_manager, save_manager,
     get_project_date_range,
+    get_all_tapjae_status, set_tapjae_status,
 )
 from utils.access_log import get_client_user
 
@@ -984,12 +985,37 @@ def render():
             gantt_df    = filtered_df
             gantt_label = "전체"
 
-        # ── ① 프로젝트 드롭다운 + 담당자 칸 ───────────────
+        # ── ① 거주구 탑재완료 관리 ─────────────────────────
+        _all_projs_raw = sorted(filtered_df['프로젝트'].dropna().unique().tolist()) \
+                         if not filtered_df.empty else []
+        _tapjae_status = get_all_tapjae_status()
+
+        with st.expander("🚢 거주구 탑재 완료 관리", expanded=False):
+            if _all_projs_raw:
+                st.caption("✅ 체크된 프로젝트는 아래 드롭다운에서 제외됩니다.")
+                _tj_ncols = min(5, max(1, len(_all_projs_raw)))
+                _tj_cols  = st.columns(_tj_ncols)
+                for _tj_i, _tj_pj in enumerate(_all_projs_raw):
+                    with _tj_cols[_tj_i % _tj_ncols]:
+                        _tj_cur = _tapjae_status.get(_tj_pj, False)
+                        _tj_new = st.checkbox(
+                            _tj_pj, value=_tj_cur,
+                            key=f"proc2_tapjae_{_tj_pj}"
+                        )
+                        if _tj_new != _tj_cur:
+                            set_tapjae_status(_tj_pj, _tj_new)
+                            st.rerun()
+            else:
+                st.caption("표시할 프로젝트가 없습니다.")
+
+        # ── ② 프로젝트 드롭다운 + 담당자 칸 ────────────────
         _all_projs_in_gantt = sorted(gantt_df['프로젝트'].dropna().unique().tolist()) \
                               if not gantt_df.empty else []
+        # 탑재완료 체크된 프로젝트는 드롭다운에서 제외
+        _projs_active = [p for p in _all_projs_in_gantt if not _tapjae_status.get(p, False)]
         col_pj, col_mgr_lbl, col_mgr_val, col_mgr_btn = st.columns([2.5, 0.6, 1.8, 0.8])
         with col_pj:
-            _gantt_proj_opts = ["(전체)"] + _all_projs_in_gantt
+            _gantt_proj_opts = ["(전체)"] + _projs_active
             _gantt_proj_prev = _ss.get('proc2_gantt_proj', "(전체)")
             _gantt_proj_idx  = _gantt_proj_opts.index(_gantt_proj_prev) \
                                if _gantt_proj_prev in _gantt_proj_opts else 0
