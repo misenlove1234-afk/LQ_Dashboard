@@ -988,31 +988,59 @@ def render():
         # ── ① 거주구 탑재완료 관리 ─────────────────────────
         _all_projs_raw = sorted(filtered_df['프로젝트'].dropna().unique().tolist()) \
                          if not filtered_df.empty else []
-        _tapjae_status = get_all_tapjae_status()
+
+        # 탑재완료 상태: 세션당 1회 DB 조회 후 session_state에서 관리
+        # (run_query 5분 캐시 우회 — 저장 즉시 드롭다운에 반영)
+        if 'proc2_tapjae_state' not in _ss:
+            _ss['proc2_tapjae_state'] = get_all_tapjae_status()
+        _tapjae_status: dict = _ss['proc2_tapjae_state']
 
         with st.expander("🚢 거주구 탑재 완료 관리", expanded=False):
             if _all_projs_raw:
-                st.caption("✅ 체크된 프로젝트는 아래 드롭다운에서 제외됩니다.")
+                st.caption("체크 후 **저장** 버튼을 누르면 드롭다운에서 즉시 제외됩니다.")
                 _tj_ncols = min(5, max(1, len(_all_projs_raw)))
                 _tj_cols  = st.columns(_tj_ncols)
                 for _tj_i, _tj_pj in enumerate(_all_projs_raw):
                     with _tj_cols[_tj_i % _tj_ncols]:
-                        _tj_cur = _tapjae_status.get(_tj_pj, False)
-                        _tj_new = st.checkbox(
-                            _tj_pj, value=_tj_cur,
-                            key=f"proc2_tapjae_{_tj_pj}"
+                        st.checkbox(
+                            _tj_pj,
+                            value=_tapjae_status.get(_tj_pj, False),
+                            key=f"proc2_tapjae_{_tj_pj}",
                         )
-                        if _tj_new != _tj_cur:
-                            set_tapjae_status(_tj_pj, _tj_new)
-                            st.rerun()
+                if st.button("💾 탑재완료 저장", key="proc2_tapjae_save", type="primary"):
+                    _new_state = dict(_tapjae_status)
+                    _all_ok = True
+                    for _tj_pj in _all_projs_raw:
+                        _wval = bool(_ss.get(f"proc2_tapjae_{_tj_pj}",
+                                             _tapjae_status.get(_tj_pj, False)))
+                        _new_state[_tj_pj] = _wval
+                        if _wval != _tapjae_status.get(_tj_pj, False):
+                            if not set_tapjae_status(_tj_pj, _wval):
+                                _all_ok = False
+                    if _all_ok:
+                        _ss['proc2_tapjae_state'] = _new_state
+                        st.toast("✅ 저장했습니다.")
+                        st.rerun()
+                    else:
+                        st.error("저장 중 오류가 발생했습니다. 관리자에게 문의해 주세요.")
             else:
                 st.caption("표시할 프로젝트가 없습니다.")
 
         # ── ② 프로젝트 드롭다운 + 담당자 칸 ────────────────
         _all_projs_in_gantt = sorted(gantt_df['프로젝트'].dropna().unique().tolist()) \
                               if not gantt_df.empty else []
-        # 탑재완료 체크된 프로젝트는 드롭다운에서 제외
+        # 탑재완료 저장된 프로젝트 드롭다운 제외
         _projs_active = [p for p in _all_projs_in_gantt if not _tapjae_status.get(p, False)]
+
+        # 사이드바 1개 선택 시 간트 드롭다운 자동 동기화
+        if len(selected_projects) == 1 and selected_projects[0] in _projs_active:
+            _sidebar_proj = selected_projects[0]
+            if _ss.get('proc2_gantt_proj') != _sidebar_proj:
+                _ss['proc2_gantt_proj'] = _sidebar_proj
+                _ps, _pe = get_project_date_range(filtered_df, _sidebar_proj)
+                _ss['proc2_gantt_proj_start'] = _ps
+                _ss['proc2_gantt_proj_end']   = _pe
+
         col_pj, col_mgr_lbl, col_mgr_val, col_mgr_btn = st.columns([2.5, 0.6, 1.8, 0.8])
         with col_pj:
             _gantt_proj_opts = ["(전체)"] + _projs_active
@@ -1026,7 +1054,6 @@ def render():
             )
             if _gantt_proj != _ss.get('proc2_gantt_proj'):
                 _ss['proc2_gantt_proj'] = _gantt_proj
-                # ② 프로젝트 변경 시 날짜 범위 표시용 세션 갱신
                 if _gantt_proj != "(전체)":
                     _ps, _pe = get_project_date_range(filtered_df, _gantt_proj)
                     _ss['proc2_gantt_proj_start'] = _ps
