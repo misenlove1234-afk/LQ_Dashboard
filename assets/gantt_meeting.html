@@ -145,10 +145,11 @@ body {
   position: sticky; z-index: 15;
 }
 .excel-gantt thead th.area-cell { z-index: 20; background: var(--bg-area); }
-.excel-gantt th.month-hdr { background: var(--bg-month) !important; color: var(--text-month) !important; }
-.excel-gantt thead tr:nth-child(1) th { top: 40px; }
-.excel-gantt thead tr:nth-child(2) th { top: 70px; }
-.excel-gantt thead tr:nth-child(3) th { top: 100px; }
+.excel-gantt th.month-hdr { background: var(--bg-month) !important; color: #000000 !important; }
+/* ctrl-row가 iframe 외부로 이동됨 → top 오프셋 0/30/60px (각 행 높이 30px 기준) */
+.excel-gantt thead tr:nth-child(1) th { top: 0px; }
+.excel-gantt thead tr:nth-child(2) th { top: 30px; }
+.excel-gantt thead tr:nth-child(3) th { top: 60px; }
 
 /* 토요일/공휴일 — 헤더: 단색 황금, 데이터 셀: 동일 색상 50% 투명 */
 .excel-gantt td.saturday {
@@ -453,9 +454,9 @@ const GJ_KEYWORD_EXACT = [
   { kw: '보온',     bg: '#f472b6' },  // 핑크 (스프레이 보온 포함)
   { kw: '도장',     bg: '#fcd5a8' },  // 연한 살구색
   { kw: '판넬',     bg: '#86efac' },  // 연두색
-  { kw: '가구',     bg: '#b45309', light: true },  // 앰버(나무색)
-  { kw: '장판',     bg: '#b45309', light: true },
-  { kw: '스커트',   bg: '#b45309', light: true },
+  { kw: '가구',     bg: '#8B5E3C', light: true },   // 나무색 (따뜻한 갈색)
+  { kw: '장판',     bg: '#00BFFF', light: false },  // 쨍한 하늘색
+  { kw: '스커트',   bg: '#16a34a', light: true },   // 초록색
 ];
 
 function _getExactColor(gj, task) {
@@ -680,8 +681,8 @@ function render() {
   const WEEKDAYS = ['일','월','화','수','목','금','토'];
   let html = '<thead>';
 
-  // 월 헤더
-  html += `<tr><th class="area-cell" rowspan="3">${groupHdr}</th>`;
+  // 월 헤더 (좌상단 구역/호선 텍스트 제거 — 빈 셀)
+  html += `<tr><th class="area-cell" rowspan="3"></th>`;
   let mGroups = [], curM = null, curCnt = 0;
   dates.forEach(d => {
     const m = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;

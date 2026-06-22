@@ -163,19 +163,10 @@ def _draw_ship_layout(layout_list, delay_by_area, title, is_split=False):
 # ══════════════════════════════════════════════
 def _render_gantt_ctrl_row(ss: dict):
     """간트 차트 위에 표시할 컨트롤 버튼 행 (Streamlit 네이티브)"""
-    cols = st.columns([1.8, 1.4, 0.7, 0.7, 0.7, 1.4, 1.5, 0.9, 0.9])
-
-    # 읽기전용 상태 표시
-    with cols[0]:
-        if ss.get('proc2_gantt_light'):
-            st.markdown('<p style="margin:0;padding:4px 0;font-size:0.85rem;">📋 읽기 전용 상태</p>',
-                        unsafe_allow_html=True)
-        else:
-            st.markdown('<p style="color:#94a3b8;margin:0;padding:4px 0;font-size:0.85rem;">📋 읽기 전용 상태</p>',
-                        unsafe_allow_html=True)
+    cols = st.columns([1.4, 0.7, 0.7, 0.7, 1.4, 1.6, 0.9, 0.9])
 
     # 숨기기 버튼
-    with cols[1]:
+    with cols[0]:
         h_on = ss.get('proc2_gantt_hidden', False)
         if st.button("숨기기 비활성화" if h_on else "숨기기 활성화",
                      key="proc2_btn_hidden", use_container_width=True,
@@ -184,21 +175,21 @@ def _render_gantt_ctrl_row(ss: dict):
             st.rerun()
 
     # 열 폭 3단계
-    with cols[2]:
+    with cols[1]:
         w_on = ss.get('proc2_gantt_col_width', 24) == 16
         if st.button("좁게" + (" ✓" if w_on else ""),
                      key="proc2_btn_col_sm", use_container_width=True,
                      type="primary" if w_on else "secondary"):
             ss['proc2_gantt_col_width'] = 16
             st.rerun()
-    with cols[3]:
+    with cols[2]:
         w_on = ss.get('proc2_gantt_col_width', 24) == 24
         if st.button("보통" + (" ✓" if w_on else ""),
                      key="proc2_btn_col_md", use_container_width=True,
                      type="primary" if w_on else "secondary"):
             ss['proc2_gantt_col_width'] = 24
             st.rerun()
-    with cols[4]:
+    with cols[3]:
         w_on = ss.get('proc2_gantt_col_width', 24) == 36
         if st.button("넓게" + (" ✓" if w_on else ""),
                      key="proc2_btn_col_lg", use_container_width=True,
@@ -207,7 +198,7 @@ def _render_gantt_ctrl_row(ss: dict):
             st.rerun()
 
     # 라이트/다크 모드
-    with cols[5]:
+    with cols[4]:
         lt_on = ss.get('proc2_gantt_light', False)
         if st.button("🌙 다크 모드" if lt_on else "☀ 라이트 모드",
                      key="proc2_btn_theme", use_container_width=True,
@@ -215,21 +206,21 @@ def _render_gantt_ctrl_row(ss: dict):
             ss['proc2_gantt_light'] = not lt_on
             st.rerun()
 
-    # 실적 보기
-    with cols[6]:
+    # 실적 보기 (OFF에도 아이콘 표시)
+    with cols[5]:
         ac_on = ss.get('proc2_gantt_actuals', False)
-        if st.button("✅ 실적보기 ON" if ac_on else "실적 보기",
+        if st.button("✅ 실적보기 ON" if ac_on else "📊 실적 보기",
                      key="proc2_btn_actuals", use_container_width=True,
                      type="primary" if ac_on else "secondary"):
             ss['proc2_gantt_actuals'] = not ac_on
             st.rerun()
 
     # 주 스크롤
-    with cols[7]:
+    with cols[6]:
         if st.button("◀ 1주전", key="proc2_btn_prev", use_container_width=True):
             ss['proc2_gantt_week_offset'] = ss.get('proc2_gantt_week_offset', 0) - 1
             st.rerun()
-    with cols[8]:
+    with cols[7]:
         if st.button("1주후 ▶", key="proc2_btn_next", use_container_width=True):
             ss['proc2_gantt_week_offset'] = ss.get('proc2_gantt_week_offset', 0) + 1
             st.rerun()
