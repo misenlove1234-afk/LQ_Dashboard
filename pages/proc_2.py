@@ -167,34 +167,52 @@ def _draw_ship_layout(layout_list, delay_by_area, title, is_split=False):
 #  iframe 외부에 배치 → 라이트/다크 테마 영향 없음
 # ══════════════════════════════════════════════
 def _render_gantt_ctrl_row(ss: dict):
-    """간트 차트 위에 표시할 컨트롤 버튼 행 (Streamlit 네이티브)"""
-    cols = st.columns([1.4, 0.7, 0.7, 0.7, 1.4, 1.6, 0.9, 0.9])
+    """간트 차트 위 컨트롤 버튼 — 카테고리별 그룹화"""
+    _LBL = '<span style="font-size:0.72rem;color:#94a3b8;">'
 
-    # 숨기기 버튼
-    with cols[0]:
+    # ── 카테고리 레이블 행 ──
+    lc = st.columns([2.5, 2.6, 1.6, 2.3])
+    lc[0].markdown(f'{_LBL}📋 표시 설정</span>', unsafe_allow_html=True)
+    lc[1].markdown(f'{_LBL}↔ 열 폭</span>',     unsafe_allow_html=True)
+    lc[2].markdown(f'{_LBL}🎨 테마</span>',      unsafe_allow_html=True)
+    lc[3].markdown(f'{_LBL}📍 이동</span>',      unsafe_allow_html=True)
+
+    # ── 버튼 행 ──
+    bc = st.columns([1.25, 1.25, 0.86, 0.86, 0.88, 1.6, 1.15, 1.15])
+
+    # [표시] 숨기기
+    with bc[0]:
         h_on = ss.get('proc2_gantt_hidden', False)
-        if st.button("숨기기 비활성화" if h_on else "숨기기 활성화",
+        if st.button("숨기기 OFF" if h_on else "숨기기 ON",
                      key="proc2_btn_hidden", use_container_width=True,
                      type="primary" if h_on else "secondary"):
             ss['proc2_gantt_hidden'] = not h_on
             st.rerun()
+    # [표시] 실적 보기
+    with bc[1]:
+        ac_on = ss.get('proc2_gantt_actuals', False)
+        if st.button("✅ 실적 ON" if ac_on else "📊 실적보기",
+                     key="proc2_btn_actuals", use_container_width=True,
+                     type="primary" if ac_on else "secondary"):
+            ss['proc2_gantt_actuals'] = not ac_on
+            st.rerun()
 
-    # 열 폭 3단계
-    with cols[1]:
+    # [열 폭] 좁게 / 보통 / 넓게
+    with bc[2]:
         w_on = ss.get('proc2_gantt_col_width', 24) == 16
         if st.button("좁게" + (" ✓" if w_on else ""),
                      key="proc2_btn_col_sm", use_container_width=True,
                      type="primary" if w_on else "secondary"):
             ss['proc2_gantt_col_width'] = 16
             st.rerun()
-    with cols[2]:
+    with bc[3]:
         w_on = ss.get('proc2_gantt_col_width', 24) == 24
         if st.button("보통" + (" ✓" if w_on else ""),
                      key="proc2_btn_col_md", use_container_width=True,
                      type="primary" if w_on else "secondary"):
             ss['proc2_gantt_col_width'] = 24
             st.rerun()
-    with cols[3]:
+    with bc[4]:
         w_on = ss.get('proc2_gantt_col_width', 24) == 36
         if st.button("넓게" + (" ✓" if w_on else ""),
                      key="proc2_btn_col_lg", use_container_width=True,
@@ -202,8 +220,8 @@ def _render_gantt_ctrl_row(ss: dict):
             ss['proc2_gantt_col_width'] = 36
             st.rerun()
 
-    # 라이트/다크 모드
-    with cols[4]:
+    # [테마] 라이트/다크
+    with bc[5]:
         lt_on = ss.get('proc2_gantt_light', False)
         if st.button("🌙 다크 모드" if lt_on else "☀ 라이트 모드",
                      key="proc2_btn_theme", use_container_width=True,
@@ -211,21 +229,12 @@ def _render_gantt_ctrl_row(ss: dict):
             ss['proc2_gantt_light'] = not lt_on
             st.rerun()
 
-    # 실적 보기 (OFF에도 아이콘 표시)
-    with cols[5]:
-        ac_on = ss.get('proc2_gantt_actuals', False)
-        if st.button("✅ 실적보기 ON" if ac_on else "📊 실적 보기",
-                     key="proc2_btn_actuals", use_container_width=True,
-                     type="primary" if ac_on else "secondary"):
-            ss['proc2_gantt_actuals'] = not ac_on
-            st.rerun()
-
-    # 주 스크롤
-    with cols[6]:
+    # [이동] 1주 앞/뒤
+    with bc[6]:
         if st.button("◀ 1주전", key="proc2_btn_prev", use_container_width=True):
             ss['proc2_gantt_week_offset'] = ss.get('proc2_gantt_week_offset', 0) - 1
             st.rerun()
-    with cols[7]:
+    with bc[7]:
         if st.button("1주후 ▶", key="proc2_btn_next", use_container_width=True):
             ss['proc2_gantt_week_offset'] = ss.get('proc2_gantt_week_offset', 0) + 1
             st.rerun()
@@ -1026,9 +1035,11 @@ def render():
             else:
                 st.caption("표시할 프로젝트가 없습니다.")
 
-        # ── ② 프로젝트 드롭다운 + 담당자 칸 ────────────────
-        _all_projs_in_gantt = sorted(gantt_df['프로젝트'].dropna().unique().tolist()) \
-                              if not gantt_df.empty else []
+        # ── ② 프로젝트 드롭다운 + 탐색 버튼 + 담당자 칸 ──────
+        # 사이드바 미선택 시에도 전체 프로젝트 목록 사용 (df_raw 기반)
+        _all_projs_in_gantt = sorted(
+            df_raw['프로젝트'].dropna().unique().tolist()
+        ) if not df_raw.empty else []
         # 탑재완료 저장된 프로젝트 드롭다운 제외
         _projs_active = [p for p in _all_projs_in_gantt if not _tapjae_status.get(p, False)]
 
@@ -1041,7 +1052,30 @@ def render():
                 _ss['proc2_gantt_proj_start'] = _ps
                 _ss['proc2_gantt_proj_end']   = _pe
 
-        col_pj, col_mgr_lbl, col_mgr_val, col_mgr_btn = st.columns([2.5, 0.6, 1.8, 0.8])
+        def _nav_to_proj(pj: str):
+            _ss['proc2_gantt_proj'] = pj
+            _ps2, _pe2 = get_project_date_range(df_raw, pj)
+            _ss['proc2_gantt_proj_start'] = _ps2
+            _ss['proc2_gantt_proj_end']   = _pe2
+            st.rerun()
+
+        _curr_pj    = _ss.get('proc2_gantt_proj', "(전체)")
+        _curr_pi    = _projs_active.index(_curr_pj) if _curr_pj in _projs_active else -1
+
+        col_prev, col_pj, col_next, col_mgr_lbl, col_mgr_val, col_mgr_btn = \
+            st.columns([0.35, 2.2, 0.35, 0.55, 1.7, 0.75])
+
+        with col_prev:
+            if st.button("◀", key="proc2_btn_proj_prev", use_container_width=True,
+                         help="이전 프로젝트") and _projs_active:
+                _prev_i = (_curr_pi - 1) % len(_projs_active)
+                _nav_to_proj(_projs_active[_prev_i])
+        with col_next:
+            if st.button("▶", key="proc2_btn_proj_next", use_container_width=True,
+                         help="다음 프로젝트") and _projs_active:
+                _next_i = (_curr_pi + 1) % len(_projs_active)
+                _nav_to_proj(_projs_active[_next_i])
+
         with col_pj:
             _gantt_proj_opts = ["(전체)"] + _projs_active
             _gantt_proj_prev = _ss.get('proc2_gantt_proj', "(전체)")
@@ -1055,7 +1089,7 @@ def render():
             if _gantt_proj != _ss.get('proc2_gantt_proj'):
                 _ss['proc2_gantt_proj'] = _gantt_proj
                 if _gantt_proj != "(전체)":
-                    _ps, _pe = get_project_date_range(filtered_df, _gantt_proj)
+                    _ps, _pe = get_project_date_range(df_raw, _gantt_proj)
                     _ss['proc2_gantt_proj_start'] = _ps
                     _ss['proc2_gantt_proj_end']   = _pe
                 else:
@@ -1095,47 +1129,60 @@ def render():
                 else:
                     st.warning("프로젝트와 담당자를 입력해 주세요.")
 
-        # 프로젝트 필터 적용 (드롭다운 선택이 있으면 gantt_df를 해당 프로젝트로 좁힘)
-        if _ss.get('proc2_gantt_proj', "(전체)") != "(전체)":
-            gantt_df = gantt_df[gantt_df['프로젝트'] == _ss['proc2_gantt_proj']]
-            gantt_label = _ss['proc2_gantt_proj']
+        # 프로젝트 필터 적용:
+        # 페이지 드롭다운 선택이 있으면 df_raw 기반으로 해당 프로젝트 데이터 사용
+        _page_proj = _ss.get('proc2_gantt_proj', "(전체)")
+        if _page_proj != "(전체)":
+            # 사이드바 필터와 무관하게 df_raw에서 해당 프로젝트만 추출
+            gantt_df = df_raw[df_raw['프로젝트'] == _page_proj].copy()
+            gantt_label = _page_proj
+        else:
+            # 기존 로직 유지 (사이드바 필터 적용된 gantt_df)
+            if _ss.get('proc2_gantt_proj', "(전체)") != "(전체)":
+                gantt_df = gantt_df[gantt_df['프로젝트'] == _page_proj]
+                gantt_label = _page_proj
 
         # row_mode: 공종만 필터(프로젝트·구역 미선택) → 호선별, 아니면 구역별
         row_mode = "ship" if (
             bool(selected_gongjongs)
             and not selected_projects
             and not selected_area_filter
+            and _page_proj == "(전체)"
         ) else "area"
 
-        perm_icon = "✅" if effective_editable else "🔒"
-        if effective_editable:
-            perm_text = "편집 가능"
-            perm_suffix = " — 막대를 드래그하여 일정 조정 후 저장하세요."
-        elif is_editable and gantt_basis != "변경 계획":
-            perm_text = f"읽기 전용 ({gantt_basis} 보기)"
-            perm_suffix = " — 편집은 사이드바 '차트 조회 기준'에서 **변경 계획**을 선택해야 활성화됩니다."
-        else:
-            perm_text = "읽기 전용 (편집 권한 없음)"
-            perm_suffix = " — 일정 변경이 필요하면 관리자에게 편집 권한을 요청하세요."
         mode_text = "호선별" if row_mode == "ship" else "구역별"
         col_gh, col_gb = st.columns([6, 1])
         with col_gh:
             st.markdown(f"##### 📅 공정 타임라인 — {gantt_label} ({mode_text} 뷰 · {gantt_basis})")
-            st.caption(
-                f"{perm_icon} **접속자:** `{current_user}` &nbsp;|&nbsp; {perm_text}"
-                + perm_suffix
-            )
+            st.caption(f"접속자: `{current_user}`")
         with col_gb:
             if st.button("⛶ 최대화", key="proc2_gantt_maximize", use_container_width=True):
                 st.session_state["proc2_gantt_maximized"] = True
                 st.rerun()
 
+        # Fix #2: 읽기 전용 안내 — 표 밖 고정 스타일 (테마 영향 없음)
+        if not effective_editable:
+            _perm_msg = (
+                "🔒 읽기 전용 — 일정 변경이 필요하면 관리자에게 편집 권한을 요청하세요."
+                if not is_editable else
+                f"🔒 읽기 전용 ({gantt_basis} 보기) — 편집하려면 사이드바 '차트 조회 기준'을 **변경 계획**으로 설정하세요."
+            )
+            st.markdown(
+                f'<div style="background:rgba(100,116,139,0.15);color:#64748b;'
+                f'padding:5px 12px;border-radius:4px;font-size:0.82rem;'
+                f'border-left:3px solid #64748b;margin-bottom:4px;">'
+                f'{_perm_msg}</div>',
+                unsafe_allow_html=True,
+            )
+
         # ── 간트 컨트롤 행 (Streamlit 네이티브) ──
         _render_gantt_ctrl_row(_ss)
 
-        has_filter = bool(selected_projects) or bool(selected_gongjongs)
+        # 페이지 드롭다운 또는 사이드바 필터 중 하나라도 있으면 간트 표시
+        has_filter = (bool(selected_projects) or bool(selected_gongjongs)
+                      or _page_proj != "(전체)")
         if not has_filter:
-            st.info("💡 사이드바에서 **호선** 또는 **공종**을 먼저 선택하세요.")
+            st.info("💡 위 드롭다운에서 **프로젝트**를 선택하거나, 사이드바에서 **호선/공종**을 선택하세요.")
         else:
             gantt_tasks = get_gantt_data(gantt_df, basis=gantt_basis)
             if not gantt_tasks:
