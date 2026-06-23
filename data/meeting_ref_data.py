@@ -1259,7 +1259,9 @@ def save_vessel_direct(vessel_no: str, vessel_type: str,
                        거주구일=None, 비고=None) -> bool:
     """호선 단건 Upsert"""
     try:
-        execute_query("""
+        conn = get_connection()
+        cur  = conn.cursor()
+        cur.execute("""
             IF EXISTS (SELECT 1 FROM lq_meet_vessel WHERE vessel_no=?)
                 UPDATE lq_meet_vessel
                 SET vessel_type=?,거주구탑재예정일=?,비고=?,updated_at=GETDATE()
@@ -1270,7 +1272,10 @@ def save_vessel_direct(vessel_no: str, vessel_type: str,
         """, (vessel_no,
               vessel_type, 거주구일 or None, 비고 or None, vessel_no,
               vessel_no, vessel_type, 거주구일 or None, 비고 or None))
+        conn.commit()
+        conn.close()
         get_vessels.clear()
+        run_query.clear()
         return True
     except Exception as e:
         logger.error("호선 저장 오류: %s\n%s", e, traceback.format_exc())
@@ -1303,6 +1308,7 @@ def save_anchor_30stg_direct(vessel_no: str, rows: list) -> int:
         conn.commit()
         conn.close()
         get_anchor_30stg.clear()
+        run_query.clear()
     except Exception as e:
         logger.error("30STG 직접 저장 오류: %s\n%s", e, traceback.format_exc())
         return -1
@@ -1350,6 +1356,7 @@ def save_anchor_50stg_direct(vessel_no: str, vessel_type: str, rows: list) -> in
         conn.commit()
         conn.close()
         get_anchor_50stg.clear()
+        run_query.clear()
     except Exception as e:
         logger.error("50STG 직접 저장 오류: %s\n%s", e, traceback.format_exc())
         return -1

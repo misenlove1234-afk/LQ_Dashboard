@@ -345,6 +345,11 @@ def _tab_rules():
 
 def _direct_vessel():
     """호선 직접 등록/조회"""
+    # 저장 후 재렌더링 시 메시지 표시
+    msg = st.session_state.pop("_vessel_save_msg", None)
+    if msg:
+        st.success(msg) if msg.startswith("✅") else st.error(msg)
+
     try:
         vdf = get_vessels()
     except Exception:
@@ -380,13 +385,18 @@ def _direct_vessel():
                 v_remark.strip() or None,
             )
             if ok:
-                st.success(f"호선 {v_no.strip()} 등록/수정 완료.")
+                st.session_state["_vessel_save_msg"] = f"✅ 호선 {v_no.strip()} 등록/수정 완료."
             else:
-                st.error("오류가 발생했습니다. 관리자에게 문의해 주세요.")
+                st.session_state["_vessel_save_msg"] = "❌ 오류가 발생했습니다. 관리자에게 문의해 주세요."
+            st.rerun()
 
 
 def _direct_30stg():
     """30STG 앵커 직접 입력"""
+    msg = st.session_state.pop("_30stg_save_msg", None)
+    if msg:
+        st.success(msg) if msg.startswith("✅") else st.error(msg)
+
     try:
         vessels = get_vessels()
     except Exception:
@@ -444,13 +454,18 @@ def _direct_30stg():
         rows_to_save = edited.to_dict("records")
         n = save_anchor_30stg_direct(sel_vessel, rows_to_save)
         if n >= 0:
-            st.success(f"{n}건 저장 완료.")
+            st.session_state["_30stg_save_msg"] = f"✅ {n}건 저장 완료."
         else:
-            st.error("오류가 발생했습니다. 관리자에게 문의해 주세요.")
+            st.session_state["_30stg_save_msg"] = "❌ 오류가 발생했습니다. 관리자에게 문의해 주세요."
+        st.rerun()
 
 
 def _direct_50stg():
     """50STG 앵커 직접 입력 (탑재종료일 + 검사일 → 중간 날짜 자동 계산)"""
+    msg = st.session_state.pop("_50stg_save_msg", None)
+    if msg:
+        st.success(msg) if msg.startswith("✅") else st.error(msg)
+
     try:
         vessels = get_vessels()
     except Exception:
@@ -509,9 +524,10 @@ def _direct_50stg():
         rows_to_save = edited.to_dict("records")
         n = save_anchor_50stg_direct(sel_vessel, sel_vtype, rows_to_save)
         if n >= 0:
-            st.success(f"{n}건 저장 완료 (취부·용접·곡직 날짜 자동 계산).")
+            st.session_state["_50stg_save_msg"] = f"✅ {n}건 저장 완료 (취부·용접·곡직 자동 계산)."
         else:
-            st.error("오류가 발생했습니다. 관리자에게 문의해 주세요.")
+            st.session_state["_50stg_save_msg"] = "❌ 오류가 발생했습니다. 관리자에게 문의해 주세요."
+        st.rerun()
 
 
 # ═══════════════════════════════════════════════════════════════
