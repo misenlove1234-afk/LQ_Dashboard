@@ -647,12 +647,14 @@ def save_ref_30stg(df: pd.DataFrame) -> bool:
         conn = get_connection()
         cur = conn.cursor()
         for _, row in df.iterrows():
+            def _si(v):
+                return int(v) if pd.notna(v) else 0
             cur.execute("""
                 UPDATE lq_meet_ref_30stg
                 SET 관철=?,덕트=?,전장=?,도장=?,배선=?,updated_at=GETDATE()
                 WHERE vessel_type=? AND block_no=?
-            """, (int(row['관철']),int(row['덕트']),int(row['전장']),
-                  int(row['도장']),int(row['배선']),
+            """, (_si(row['관철']),_si(row['덕트']),_si(row['전장']),
+                  _si(row['도장']),_si(row['배선']),
                   row['vessel_type'],row['block_no']))
         conn.commit()
         conn.close()
@@ -672,7 +674,7 @@ def save_ref_50stg(df: pd.DataFrame) -> bool:
                         '목의화기2차','피복','BP검사','판넬설치','결선','가구','장판','스커트']
         all_cols = sunggak_cols + work_cols
         for _, row in df.iterrows():
-            vals = [int(row[c]) for c in all_cols]
+            vals = [int(row[c]) if pd.notna(row.get(c)) else 0 for c in all_cols]
             set_clause = ",".join(f"[{c}]=?" for c in all_cols)
             cur.execute(f"""
                 UPDATE lq_meet_ref_50stg
@@ -909,17 +911,15 @@ def generate_anchor_template(vessel_type: str = "LNG") -> bytes:
     ws3.freeze_panes = "D2"
     _write_header(ws3,
                   ["호선번호", "선종(LNG/CONT)", "데크",
-                   "탑재시작일",
-                   "선각취부 완료일", "선각용접 완료일",
-                   "FLOOR곡직 완료일", "WALL곡직 완료일",
+                   "블럭 탑재 종료일",
                    "선각검사 완료일"],
-                  [14, 16, 12, 16, 16, 16, 16, 16, 16])
+                  [14, 16, 12, 18, 18])
     for ri, dk in enumerate(decks_sorted, 2):
         _set_cell(ws3, ri, 1, "")
         _set_cell(ws3, ri, 2, vessel_type, fill=PREFILL_FILL)
         _set_cell(ws3, ri, 3, dk,          fill=PREFILL_FILL)
-        for c in range(4, 10):
-            _blank_date(ws3, ri, c)
+        _blank_date(ws3, ri, 4)
+        _blank_date(ws3, ri, 5)
 
     # ── 안내 시트 ─────────────────────────────────────────────
     ws_guide = wb.create_sheet("입력안내", 0)
@@ -939,12 +939,8 @@ def generate_anchor_template(vessel_type: str = "LNG") -> bytes:
         ["  ·", "업로드 후 기존 동일 키(호선+블럭/데크)는 덮어씀"],
         ["", ""],
         ["  50STG 앵커 컬럼 설명", ""],
-        ["  탑재시작일",       "마지막 블럭 탑재 시작일"],
-        ["  선각취부 완료일",  "선각취부 작업 완료일"],
-        ["  선각용접 완료일",  "선각용접 작업 완료일"],
-        ["  FLOOR곡직 완료일", "선각 FLOOR 곡직 완료일"],
-        ["  WALL곡직 완료일",  "선각 WALL 곡직 완료일 (트렁크배선 시작 트리거)"],
-        ["  선각검사 완료일",  "선각검사 완료일 (50STG 의장공정 시작 기준점)"],
+        ["  블럭 탑재 종료일", "마지막 블럭 탑재 종료일 (취부·용접·곡직은 기준정보 소요일로 자동 계산)"],
+        ["  선각검사 완료일",  "선각검사 완료일 (50STG 의장공정 시작 기준점) — 비워두면 자동 계산"],
     ]
     for r_idx, (a, b) in enumerate(guide_rows, 1):
         ca = ws_guide.cell(row=r_idx, column=1, value=a)
@@ -1007,6 +1003,63 @@ def _to_date_str(val) -> str | None:
         return str(val)[:10]
     s = str(val).strip()
     return None if s in ("", "None") else s
+
+
+def _calc_sunggak_from_ref(mount_end: datetime.date, deck: str, vessel_type: str) -> dict:
+    """탑재 종료일 + 기준정보 소요일 → 선각 중간 날짜 자동 계산"""
+    try:
+        cal_df = get_calendar()
+        holidays = {str(d)[:10] for d in cal_df["cal_date"]} if not cal_df.empty else set()
+    except Exception:
+        holidays = set()
+
+    def _nwd(d):
+        while d.weekday() == 6 or str(d) in holidays:
+            d += datetime.timedelta(days=1)
+        return d
+
+    def _awd(start, n):
+        if n <= 0:
+            return start
+        rem = n - 1
+        cur = start
+        while rem > 0:
+            cur += datetime.timedelta(days=1)
+            if cur.weekday() != 6 and str(cur) not in holidays:
+                rem -= 1
+        return cur
+
+    result = {
+        "sunggak_attach_end": None,
+        "sunggak_weld_end": None,
+        "floor_straight_date": None,
+        "wall_straight_date": None,
+    }
+    try:
+        ref_df = get_ref_50stg(vessel_type)
+        if ref_df.empty:
+            return result
+        ref_row = ref_df[ref_df["deck"] == deck]
+        if ref_row.empty:
+            return result
+        ref = ref_row.iloc[0]
+        prev = mount_end
+        for col_key, db_col in [
+            ("선각취부",      "sunggak_attach_end"),
+            ("선각용접",      "sunggak_weld_end"),
+            ("선각FLOOR곡직", "floor_straight_date"),
+            ("선각WALL곡직",  "wall_straight_date"),
+        ]:
+            days = int(ref.get(col_key, 0) or 0)
+            if days == 0:
+                continue
+            start = _nwd(prev + datetime.timedelta(days=1))
+            end   = _awd(start, days)
+            result[db_col] = end
+            prev = end
+    except Exception as e:
+        logger.error("선각 날짜 계산 오류: %s", e)
+    return result
 
 
 def upload_anchor_excel(file_bytes: bytes) -> dict:
@@ -1096,18 +1149,33 @@ def upload_anchor_excel(file_bytes: bytes) -> dict:
         conn = get_connection()
         cur  = conn.cursor()
         for row in ws.iter_rows(min_row=2, values_only=True):
-            vals = (list(row) + [None] * 9)[:9]
-            vessel_no, _, deck, mount_start, attach_end, weld_end, floor_end, wall_end, insp_end = vals
+            vals = (list(row) + [None] * 5)[:5]
+            vessel_no, vessel_type_cell, deck, mount_end_raw, insp_end_raw = vals
             if not vessel_no or not deck:
                 continue
-            vno  = str(vessel_no).strip()
-            deck = str(deck).strip()
-            d_mount  = _to_date_str(mount_start)
-            d_attach = _to_date_str(attach_end)
-            d_weld   = _to_date_str(weld_end)
-            d_floor  = _to_date_str(floor_end)
-            d_wall   = _to_date_str(wall_end)
-            d_insp   = _to_date_str(insp_end)
+            vno   = str(vessel_no).strip()
+            dk    = str(deck).strip()
+            vtype = str(vessel_type_cell).strip() if vessel_type_cell else ""
+            d_mount = _to_date_str(mount_end_raw)
+            d_insp  = _to_date_str(insp_end_raw)
+
+            # 취부·용접·곡직 날짜 — 기준정보 소요일로 자동 계산
+            d_attach = d_weld = d_floor = d_wall = None
+            if d_mount and vtype in ("LNG", "CONT"):
+                try:
+                    mount_dt = datetime.date.fromisoformat(d_mount)
+                    calc = _calc_sunggak_from_ref(mount_dt, dk, vtype)
+                    d_attach = str(calc["sunggak_attach_end"]) if calc.get("sunggak_attach_end") else None
+                    d_weld   = str(calc["sunggak_weld_end"])   if calc.get("sunggak_weld_end")   else None
+                    d_floor  = str(calc["floor_straight_date"]) if calc.get("floor_straight_date") else None
+                    d_wall   = str(calc["wall_straight_date"])  if calc.get("wall_straight_date")  else None
+                    # 선각검사일 미입력 시 wall 다음 영업일로 자동 계산
+                    if not d_insp and d_wall:
+                        wall_dt = datetime.date.fromisoformat(d_wall)
+                        d_insp = str(wall_dt + datetime.timedelta(days=1))
+                except Exception as ce:
+                    logger.error("50STG 날짜 계산 오류 (호선=%s, 데크=%s): %s", vno, dk, ce)
+
             cur.execute("""
                 IF EXISTS (SELECT 1 FROM lq_meet_anchor_50stg WHERE vessel_no=? AND deck=?)
                     UPDATE lq_meet_anchor_50stg
@@ -1120,8 +1188,8 @@ def upload_anchor_excel(file_bytes: bytes) -> dict:
                       (vessel_no,deck,mount_start_date,sunggak_attach_end,sunggak_weld_end,
                        floor_straight_date,wall_straight_date,inspection_date)
                     VALUES (?,?,?,?,?,?,?,?)
-            """, (vno, deck, d_mount, d_attach, d_weld, d_floor, d_wall, d_insp, vno, deck,
-                  vno, deck, d_mount, d_attach, d_weld, d_floor, d_wall, d_insp))
+            """, (vno, dk, d_mount, d_attach, d_weld, d_floor, d_wall, d_insp, vno, dk,
+                  vno, dk, d_mount, d_attach, d_weld, d_floor, d_wall, d_insp))
             result["anchor50"] += 1
         conn.commit()
         conn.close()

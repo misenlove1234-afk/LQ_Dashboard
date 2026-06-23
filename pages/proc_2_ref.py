@@ -114,12 +114,19 @@ def _tab_50stg():
 
     col_cfg = {"deck": st.column_config.TextColumn("데크", disabled=True, width="small")}
 
-    st.markdown("**선각 작업**")
+    st.markdown("**선각 작업** &nbsp; *(블럭탑재 종료 → 선각검사 완료)*")
+    sg_display = edit_df[["deck"] + sunggak_cols].copy()
+    sg_display["선각작업일"] = sg_display[sunggak_cols].fillna(0).sum(axis=1).astype(int)
     sg_edit = st.data_editor(
-        edit_df[["deck"] + sunggak_cols],
-        column_config={**col_cfg,
-                       **{c: st.column_config.NumberColumn(c, min_value=0, max_value=60, step=1)
-                          for c in sunggak_cols}},
+        sg_display,
+        column_config={
+            **col_cfg,
+            **{c: st.column_config.NumberColumn(c, min_value=0, max_value=60, step=1)
+               for c in sunggak_cols},
+            "선각작업일": st.column_config.NumberColumn(
+                "선각작업일(합계)", disabled=True,
+                help="선각취부+용접+FLOOR곡직+WALL곡직 자동 합산"),
+        },
         use_container_width=True, hide_index=True,
         key=f"ref50_sg_editor_{vtype}",
     )
@@ -276,8 +283,10 @@ def _tab_calendar():
             st.warning("사유를 입력해 주세요.")
         else:
             ok = add_calendar_date(str(new_date), new_reason.strip())
-            _save_result(ok)
-            st.rerun()
+            if ok:
+                st.success(f"{new_date} 등록되었습니다.")
+            else:
+                st.error("오류가 발생했습니다. 관리자에게 문의해 주세요.")
 
     try:
         cal_df = get_calendar()
