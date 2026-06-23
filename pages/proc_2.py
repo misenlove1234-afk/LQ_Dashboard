@@ -1509,7 +1509,7 @@ def render():
         if not st.session_state.get("is_admin"):
             st.warning("⚠️ 관리자 권한이 필요합니다. 사이드바에서 관리자 비밀번호를 입력해 주세요.")
         else:
-            # TODO: 기준정보 브랜치 통합 시 여기에 컴포넌트 삽입
-            st.info("기준정보 관리 기능은 준비 중입니다. (별도 브랜치 통합 후 제공 예정)")
+            from pages.proc_2_ref import render_ref_tab
+            render_ref_tab()
 
     # ══════════════════════════════════════════════
