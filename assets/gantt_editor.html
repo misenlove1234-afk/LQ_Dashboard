@@ -663,6 +663,12 @@ function render() {
     // 기본 행 수만큼 빈 레인 미리 생성 (데이터 없어도 행 높이 보장)
     const lanes = Array.from({length: defaultLanes}, () => []);
     tasks.forEach(task => {
+      // 30STG 작업은 오버랩 여부와 무관하게 항상 독립 레인 (오버랩 정도를 시각적으로 파악)
+      const is30STG = String(task.stg || '').includes('30');
+      if (is30STG) {
+        lanes.push([task]);
+        return;
+      }
       let placed = false;
       for (const lane of lanes) {
         // 레인이 비었거나 가장 늦게 끝난 task 이후면 배치
