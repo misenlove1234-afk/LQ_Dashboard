@@ -150,22 +150,46 @@ def _tab_50stg():
 def _tab_inout():
     df = _load_safe(get_ref_inout, default_inout_df)
 
-    work_cols = ["트렁크배선", "윈도우설치", "윈도우검사", "내부배관검사", "외부배관검사",
-                 "외판도장", "외판족장철거", "FLOOR도장", "탑재준비", "탑재사열", "인양", "탑재"]
-    edit_df = df[["area"] + work_cols].copy()
+    io_cols = [c for c in [
+        "트렁크배선","윈도우설치","윈도우검사","내부배관검사","외부배관검사",
+        "외판도장","외판족장철거","FLOOR도장","목의장비탑재","목의장비설치",
+        "탑재준비","탑재사열","인양","탑재",
+    ] if c in df.columns]
+    su_cols = [c for c in [
+        "도장PB","도장TU","보온","판넬설치","결선","장판","스커트","배선","족장철거",
+    ] if c in df.columns]
 
-    col_cfg = {"area": st.column_config.TextColumn("구역", disabled=True, width="small")}
-    for c in work_cols:
-        col_cfg[c] = st.column_config.NumberColumn(c, min_value=0, max_value=90, step=1)
+    col_cfg_base = {"area": st.column_config.TextColumn("구역", disabled=True, width="small")}
 
-    edited = st.data_editor(edit_df, column_config=col_cfg,
-                             use_container_width=True, hide_index=True,
-                             key="ref_inout_editor")
+    st.caption("0 = 해당 구역 작업 없음 / 숫자 = 실작업일")
+    st.markdown("**In/Outside · Elevator 공종**")
+    io_edited = st.data_editor(
+        df[["area"] + io_cols].copy(),
+        column_config={**col_cfg_base,
+                       **{c: st.column_config.NumberColumn(c, min_value=0, max_value=90, step=1)
+                          for c in io_cols}},
+        use_container_width=True, hide_index=True, key="ref_inout_io_editor",
+    )
+
+    if su_cols:
+        st.markdown("**STAIRWAY · UPP-DK 공종**")
+        su_edited = st.data_editor(
+            df[["area"] + su_cols].copy(),
+            column_config={**col_cfg_base,
+                           **{c: st.column_config.NumberColumn(c, min_value=0, max_value=90, step=1)
+                              for c in su_cols}},
+            use_container_width=True, hide_index=True, key="ref_inout_su_editor",
+        )
+    else:
+        su_edited = None
 
     if st.button("저장", key="ref_inout_save", type="primary"):
         save_df = df.copy()
-        for col in work_cols:
-            save_df[col] = edited[col].values
+        for col in io_cols:
+            save_df[col] = io_edited[col].values
+        if su_edited is not None:
+            for col in su_cols:
+                save_df[col] = su_edited[col].values
         _save_result(save_ref_inout(save_df))
 
 

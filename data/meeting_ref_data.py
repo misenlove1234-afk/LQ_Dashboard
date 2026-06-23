@@ -69,12 +69,25 @@ _INIT_50STG = [
     ("CONT","NAV-DK",0,0,0,0,  6,2,3,10, 5, 0,1,1, 3, 3,2,1,1),
 ]
 
-# ── In/Outside 기준파일 ──────────────────────────────────────
-# 열 순서: area, 트렁크배선, 윈도우설치, 윈도우검사, 내부배관검사,
-#          외부배관검사, 외판도장, 외판족장철거, FLOOR도장, 탑재준비, 탑재사열, 인양, 탑재
+# ── In/Outside / STAIRWAY / UPP-DK 기준파일 ─────────────────
+# 열 순서: area,
+#   [In/Outside·Elevator] 트렁크배선,윈도우설치,윈도우검사,내부배관검사,외부배관검사,
+#                          외판도장,외판족장철거,FLOOR도장,목의장비탑재,목의장비설치,
+#                          탑재준비,탑재사열,인양,탑재,
+#   [STAIRWAY·UPP-DK]     도장PB,도장TU,보온,판넬설치,결선,장판,스커트,배선,족장철거
 _INIT_INOUT = [
-    ("In/Outside", 5,3,1,1,1,40,3,4,2,1,1,1),
-    ("Elevator",   3,0,0,0,0, 0,0,0,0,0,0,0),
+    ("In/Outside", 5,3,1,1,1,40,3,4,0,0, 2,1,1,1, 0,0,0,0,0,0,0,0,0),
+    ("Elevator",   3,0,0,0,0, 0,0,0,0,0, 0,0,0,0, 0,0,0,0,0,0,0,0,0),
+    ("STAIRWAY",   0,0,0,0,0, 0,0,0,0,0, 0,0,0,0, 0,0,0,0,0,0,0,0,0),
+    ("UPP-DK",     0,0,0,0,0, 0,0,0,0,0, 0,0,0,0, 0,0,0,0,0,0,0,0,0),
+]
+
+# In/Outside 계열 공통 작업 컬럼 목록 (seed·query·save에 재사용)
+_IO_WORK_COLS = [
+    '트렁크배선','윈도우설치','윈도우검사','내부배관검사','외부배관검사',
+    '외판도장','외판족장철거','FLOOR도장','목의장비탑재','목의장비설치',
+    '탑재준비','탑재사열','인양','탑재',
+    '도장PB','도장TU','보온','판넬설치','결선','장판','스커트','배선','족장철거',
 ]
 
 # ── 공종 실행 순서 ────────────────────────────────────────────
@@ -261,13 +274,30 @@ CREATE TABLE lq_meet_ref_inout (
     외판도장      INT DEFAULT 0,
     외판족장철거  INT DEFAULT 0,
     FLOOR도장     INT DEFAULT 0,
+    목의장비탑재  INT DEFAULT 0,
+    목의장비설치  INT DEFAULT 0,
     탑재준비      INT DEFAULT 0,
     탑재사열      INT DEFAULT 0,
     인양         INT DEFAULT 0,
     탑재         INT DEFAULT 0,
+    도장PB        INT DEFAULT 0,
+    도장TU        INT DEFAULT 0,
+    보온          INT DEFAULT 0,
+    판넬설치      INT DEFAULT 0,
+    결선          INT DEFAULT 0,
+    장판          INT DEFAULT 0,
+    스커트        INT DEFAULT 0,
+    배선          INT DEFAULT 0,
+    족장철거      INT DEFAULT 0,
     updated_at   DATETIME DEFAULT GETDATE()
 )
 """
+
+# 기존 lq_meet_ref_inout에 신규 컬럼 마이그레이션
+_ALTER_INOUT_COLS = [
+    "목의장비탑재", "목의장비설치",
+    "도장PB", "도장TU", "보온", "판넬설치", "결선", "장판", "스커트", "배선", "족장철거",
+]
 
 _DDL_SEQUENCE = """
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='lq_meet_ref_sequence' AND xtype='U')
@@ -418,6 +448,15 @@ def init_tables() -> bool:
                 )
                 ALTER TABLE lq_meet_anchor_50stg ADD [{col}] {col_type}
             """)
+        # 기존 lq_meet_ref_inout에 신규 컬럼 마이그레이션 (STAIRWAY/UPP-DK 추가)
+        for col in _ALTER_INOUT_COLS:
+            cur.execute(f"""
+                IF NOT EXISTS (
+                    SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME='lq_meet_ref_inout' AND COLUMN_NAME=N'{col}'
+                )
+                ALTER TABLE lq_meet_ref_inout ADD [{col}] INT DEFAULT 0
+            """)
         conn.commit()
 
         _seed_30stg(cur)
@@ -463,15 +502,14 @@ def _seed_50stg(cur):
 
 
 def _seed_inout(cur):
+    col_str = ','.join(f'[{c}]' for c in _IO_WORK_COLS)
+    ph = ','.join(['?'] * len(_IO_WORK_COLS))
     for row in _INIT_INOUT:
-        cur.execute("""
+        cur.execute(f"""
             IF NOT EXISTS (SELECT 1 FROM lq_meet_ref_inout WHERE area=?)
-            INSERT INTO lq_meet_ref_inout
-              (area,트렁크배선,윈도우설치,윈도우검사,내부배관검사,외부배관검사,
-               외판도장,외판족장철거,FLOOR도장,탑재준비,탑재사열,인양,탑재)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (row[0], row[0],row[1],row[2],row[3],row[4],row[5],
-              row[6],row[7],row[8],row[9],row[10],row[11],row[12]))
+            INSERT INTO lq_meet_ref_inout (area,{col_str})
+            VALUES (?,{ph})
+        """, (row[0], row[0], *row[1:]))
 
 
 def _seed_sequence(cur):
@@ -544,10 +582,8 @@ def get_ref_50stg(vessel_type: str = None) -> pd.DataFrame:
 
 @st.cache_data(ttl=300)
 def get_ref_inout() -> pd.DataFrame:
-    return run_query("""SELECT area,트렁크배선,윈도우설치,윈도우검사,내부배관검사,
-                               외부배관검사,외판도장,외판족장철거,FLOOR도장,
-                               탑재준비,탑재사열,인양,탑재
-                        FROM lq_meet_ref_inout""")
+    cols = ','.join(f'[{c}]' for c in _IO_WORK_COLS)
+    return run_query(f"SELECT area,{cols} FROM lq_meet_ref_inout")
 
 
 @st.cache_data(ttl=300)
@@ -656,13 +692,13 @@ def save_ref_inout(df: pd.DataFrame) -> bool:
     try:
         conn = get_connection()
         cur = conn.cursor()
-        cols = ['트렁크배선','윈도우설치','윈도우검사','내부배관검사','외부배관검사',
-                '외판도장','외판족장철거','FLOOR도장','탑재준비','탑재사열','인양','탑재']
+        cols = [c for c in _IO_WORK_COLS if c in df.columns]
         for _, row in df.iterrows():
             vals = [int(row[c]) for c in cols]
+            set_clause = ','.join(f'[{c}]=?' for c in cols)
             cur.execute(f"""
                 UPDATE lq_meet_ref_inout
-                SET {','.join(f'{c}=?' for c in cols)}, updated_at=GETDATE()
+                SET {set_clause}, updated_at=GETDATE()
                 WHERE area=?
             """, (*vals, row['area']))
         conn.commit()
@@ -761,9 +797,7 @@ def default_50stg_df(vessel_type: str) -> pd.DataFrame:
 
 
 def default_inout_df() -> pd.DataFrame:
-    return pd.DataFrame(_INIT_INOUT, columns=[
-        'area','트렁크배선','윈도우설치','윈도우검사','내부배관검사','외부배관검사',
-        '외판도장','외판족장철거','FLOOR도장','탑재준비','탑재사열','인양','탑재'])
+    return pd.DataFrame(_INIT_INOUT, columns=['area'] + _IO_WORK_COLS)
 
 
 def default_sequence_df(stg: str = None) -> pd.DataFrame:
@@ -853,7 +887,7 @@ def generate_anchor_template(vessel_type: str = "LNG") -> bytes:
                   [14, 16, 20, 30])
     for r in range(2, 22):
         _set_cell(ws1, r, 1, "")
-        _set_cell(ws1, r, 2, vessel_type, fill=PREFILL_FILL)
+        _set_cell(ws1, r, 2, "")   # 선종은 직접 입력 (LNG 또는 CONT)
         _blank_date(ws1, r, 3)
         _set_cell(ws1, r, 4, "")
 
@@ -901,7 +935,7 @@ def generate_anchor_template(vessel_type: str = "LNG") -> bytes:
         ["  공통 주의사항",   ""],
         ["  ·", "날짜 형식: YYYY-MM-DD (예: 2026-01-15)"],
         ["  ·", "선종: LNG 또는 CONT 정확히 입력"],
-        ["  ·", "연파랑 셀(블럭번호·데크·선종)은 미리 채워진 값 — 수정 금지"],
+        ["  ·", "연파랑 셀(블럭번호·데크)은 미리 채워진 값 — 수정 금지 / 선종(호선정보)은 직접 입력"],
         ["  ·", "업로드 후 기존 동일 키(호선+블럭/데크)는 덮어씀"],
         ["", ""],
         ["  50STG 앵커 컬럼 설명", ""],
@@ -986,7 +1020,14 @@ def upload_anchor_excel(file_bytes: bytes) -> dict:
     try:
         wb = load_workbook(io.BytesIO(file_bytes), data_only=True)
     except Exception as e:
-        result["errors"].append(f"파일 읽기 오류: {e}")
+        msg = str(e)
+        if "zip file" in msg.lower() or "not a zip" in msg.lower():
+            result["errors"].append(
+                "파일 형식 오류: .xls(구버전) 파일은 지원되지 않습니다. "
+                "Excel에서 [다른 이름으로 저장 → Excel 통합 문서(.xlsx)]로 저장 후 다시 업로드하세요."
+            )
+        else:
+            result["errors"].append(f"파일 읽기 오류: {msg}")
         return result
 
     # ── Sheet: 호선정보 ────────────────────────────────────────
