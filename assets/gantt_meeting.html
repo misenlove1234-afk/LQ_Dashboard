@@ -620,7 +620,7 @@ function render() {
   if (visibleData.length === 0) {
     wrapEl.style.display = 'none';
     msgEl.style.display  = 'flex';
-    msgEl.innerHTML      = '⚠️ 표시할 작업이 없습니다. 위 <strong style="color:#7dd3fc;">숨기기 활성화</strong> 버튼으로 숨김 작업을 볼 수 있습니다.';
+    msgEl.innerHTML      = '⚠️ 표시할 작업이 없습니다. (표시여부 Y 작업이 없거나 필터 조건을 확인하세요.)';
     return;
   }
   wrapEl.style.display = 'block';
