@@ -171,14 +171,15 @@ def _render_gantt_ctrl_row(ss: dict):
     _LBL = '<span style="font-size:0.72rem;color:#94a3b8;">'
 
     # ── 카테고리 레이블 행 ──
-    lc = st.columns([2.5, 2.6, 1.6, 2.3])
+    lc = st.columns([2.5, 2.6, 1.6, 1.5, 2.3])
     lc[0].markdown(f'{_LBL}📋 표시 설정</span>', unsafe_allow_html=True)
     lc[1].markdown(f'{_LBL}↔ 열 폭</span>',     unsafe_allow_html=True)
     lc[2].markdown(f'{_LBL}🎨 테마</span>',      unsafe_allow_html=True)
-    lc[3].markdown(f'{_LBL}📍 이동</span>',      unsafe_allow_html=True)
+    lc[3].markdown(f'{_LBL}🔀 오버랩</span>',    unsafe_allow_html=True)
+    lc[4].markdown(f'{_LBL}📍 이동</span>',      unsafe_allow_html=True)
 
     # ── 버튼 행 ──
-    bc = st.columns([1.25, 1.25, 0.86, 0.86, 0.88, 1.6, 1.15, 1.15])
+    bc = st.columns([1.25, 1.25, 0.86, 0.86, 0.88, 1.6, 1.5, 1.15, 1.15])
 
     # [표시] 숨기기
     with bc[0]:
@@ -229,12 +230,24 @@ def _render_gantt_ctrl_row(ss: dict):
             ss['proc2_gantt_light'] = not lt_on
             st.rerun()
 
-    # [이동] 1주 앞/뒤
+    # [오버랩] 모드 전환 (lane: 레인 재배치 / cascade: 날짜 밀기)
     with bc[6]:
+        _om = ss.get('proc2_overlap_mode', 'lane')
+        if st.button(
+            "→ 날짜 밀기" if _om == 'cascade' else "↕ 레인 재배치",
+            key="proc2_btn_overlap", use_container_width=True,
+            type="primary" if _om == 'cascade' else "secondary",
+            help="레인 재배치: 겹치는 작업을 아래 행으로 / 날짜 밀기: 이후 작업을 뒤로 밀기",
+        ):
+            ss['proc2_overlap_mode'] = 'lane' if _om == 'cascade' else 'cascade'
+            st.rerun()
+
+    # [이동] 1주 앞/뒤
+    with bc[7]:
         if st.button("◀ 1주전", key="proc2_btn_prev", use_container_width=True):
             ss['proc2_gantt_week_offset'] = ss.get('proc2_gantt_week_offset', 0) - 1
             st.rerun()
-    with bc[7]:
+    with bc[8]:
         if st.button("1주후 ▶", key="proc2_btn_next", use_container_width=True):
             ss['proc2_gantt_week_offset'] = ss.get('proc2_gantt_week_offset', 0) + 1
             st.rerun()
@@ -252,7 +265,8 @@ def _render_gantt_component(tasks: list, is_editable: bool = False,
                              col_width: int = 24,
                              light_theme: bool = False,
                              show_actuals: bool = False,
-                             week_offset: int = 0):
+                             week_offset: int = 0,
+                             overlap_mode: str = "lane"):
     """간트 HTML 템플릿에 데이터를 주입해 컴포넌트로 렌더링
     row_mode: 'area' (구역별) | 'ship' (호선별)
     wrap_max_height: .gantt-wrap 영역 최대 높이 CSS 값 (기본 520px, 최대화 시 viewport 기준)
@@ -280,6 +294,7 @@ def _render_gantt_component(tasks: list, is_editable: bool = False,
         .replace('__INIT_LIGHT_THEME__',    'true' if light_theme else 'false')
         .replace('__INIT_SHOW_ACTUALS__',   'true' if show_actuals else 'false')
         .replace('__INIT_WEEK_OFFSET__',    str(week_offset))
+        .replace('__INIT_OVERLAP_MODE__',   overlap_mode)
     )
     # gantt-wrap 최대 높이 동적 치환 (템플릿 하드코딩 520px → 파라미터)
     if wrap_max_height != "520px":
@@ -290,7 +305,7 @@ def _render_gantt_component(tasks: list, is_editable: bool = False,
 # ══════════════════════════════════════════════
 #  탭 상수
 # ══════════════════════════════════════════════
-TAB_OPTIONS = ["종합 공정 현황", "구역별 상세 현황"]
+TAB_OPTIONS = ["종합 공정 현황", "구역별 상세 현황", "기준정보"]
 
 
 # ══════════════════════════════════════════════
@@ -619,6 +634,7 @@ def render():
     if 'proc2_gantt_light'       not in _ss: _ss['proc2_gantt_light']       = False
     if 'proc2_gantt_actuals'     not in _ss: _ss['proc2_gantt_actuals']     = False
     if 'proc2_gantt_week_offset' not in _ss: _ss['proc2_gantt_week_offset'] = 0
+    if 'proc2_overlap_mode'      not in _ss: _ss['proc2_overlap_mode']      = 'lane'
 
     # ══════════════════════════════════════════════
     #  간트 최대화 모드 — 사이드바는 유지, 메인 영역만 풀 너비
@@ -680,7 +696,8 @@ def render():
                                         col_width=_ss['proc2_gantt_col_width'],
                                         light_theme=_ss['proc2_gantt_light'],
                                         show_actuals=_ss['proc2_gantt_actuals'],
-                                        week_offset=_ss['proc2_gantt_week_offset'])
+                                        week_offset=_ss['proc2_gantt_week_offset'],
+                                        overlap_mode=_ss.get('proc2_overlap_mode', 'lane'))
         return
 
     # ── 상단 정보 ──────────────────────────────────
@@ -1195,7 +1212,8 @@ def render():
                                         col_width=_ss['proc2_gantt_col_width'],
                                         light_theme=_ss['proc2_gantt_light'],
                                         show_actuals=_ss['proc2_gantt_actuals'],
-                                        week_offset=_ss['proc2_gantt_week_offset'])
+                                        week_offset=_ss['proc2_gantt_week_offset'],
+                                        overlap_mode=_ss.get('proc2_overlap_mode', 'lane'))
 
         st.markdown('<hr style="border-color:rgba(56,189,248,0.15);">', unsafe_allow_html=True)
         st.subheader("📋 구역별 상세 작업 현황")
@@ -1517,5 +1535,16 @@ def render():
                     )
         else:
             st.caption("저장된 메모가 없습니다.")
+
+    # ══════════════════════════════════════════════
+    #  Tab 3: 기준정보 (관리자 전용 통합 포인트)
+    # ══════════════════════════════════════════════
+    elif tab_choice == tab_options[2]:
+        st.markdown("##### 🗂️ 기준정보 관리")
+        if not st.session_state.get("is_admin"):
+            st.warning("⚠️ 관리자 권한이 필요합니다. 사이드바에서 관리자 비밀번호를 입력해 주세요.")
+        else:
+            # TODO: 기준정보 브랜치 통합 시 여기에 컴포넌트 삽입
+            st.info("기준정보 관리 기능은 준비 중입니다. (별도 브랜치 통합 후 제공 예정)")
 
     # ══════════════════════════════════════════════

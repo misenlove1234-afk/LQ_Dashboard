@@ -338,6 +338,7 @@ let FONT_SIZE_PX = COL_W <= 16 ? 13 : COL_W <= 24 ? 18 : 22;
 let isLightTheme = __INIT_LIGHT_THEME__;    // true | false
 let showActuals  = __INIT_SHOW_ACTUALS__;   // true | false
 const WEEK_OFFSET = __INIT_WEEK_OFFSET__;  // 주 단위 오프셋 (정수)
+let overlapMode = '__INIT_OVERLAP_MODE__';  // 'lane' | 'cascade'
 
 // 초기 상태 적용 (Streamlit 주입값 기준)
 function initGanttState() {
@@ -662,6 +663,12 @@ function render() {
     // 기본 행 수만큼 빈 레인 미리 생성 (데이터 없어도 행 높이 보장)
     const lanes = Array.from({length: defaultLanes}, () => []);
     tasks.forEach(task => {
+      // 30STG 작업은 오버랩 여부와 무관하게 항상 독립 레인 (오버랩 정도를 시각적으로 파악)
+      const is30STG = String(task.stg || '').includes('30');
+      if (is30STG) {
+        lanes.push([task]);
+        return;
+      }
       let placed = false;
       for (const lane of lanes) {
         // 레인이 비었거나 가장 늦게 끝난 task 이후면 배치
@@ -834,7 +841,8 @@ function render() {
         const d = dates[cursor];
         const dstr = _dateKey(d);
         const cls = [];
-        if (d.getDay() === 6 || HOLIDAYS.has(dstr)) cls.push('saturday');
+        if (d.getDay() === 6) cls.push('saturday');
+        if (HOLIDAYS.has(dstr)) cls.push('holiday');
         if (dstr === TODAY) cls.push('today');
         html += `<td class="${cls.join(' ')}" data-date="${dstr}" data-area="${group}" data-lane="${laneIdx}"></td>`;
         cursor++;
@@ -903,6 +911,12 @@ function onBarMouseDown(e) {
   let mode = 'move';
   if (relX <= 6) mode = 'resize-start';
   else if (relX >= rect.width - 6) mode = 'resize-end';
+
+  // 실적 기반 드래그 제한
+  const started = bar.dataset.started === 'true';
+  const ended   = bar.dataset.ended   === 'true';
+  if (started && ended) return;                   // 착수+완료: 전체 잠금
+  if (started && mode !== 'resize-end') return;  // 착수만: resize-end(뒤 늘리기)만 허용
 
   dragState = {
     taskId:        bar.dataset.taskId,
@@ -1106,6 +1120,8 @@ function applyDragChange(state, newDate) {
 
   task.s = newStart;
   task.e = newEnd;
+  // 오버랩 모드에 따라 충돌 해소 (lane 모드는 render 내 auto-lane이 자동 처리)
+  if (overlapMode === 'cascade') cascadeOverlap(task);
   render();
 }
 
@@ -1181,6 +1197,34 @@ function cancelGanttChanges() {
   JSON.parse(JSON.stringify(ganttDataOriginal)).forEach(t => ganttData.push(t));
   pendingChanges = [];
   render();
+}
+
+// 오버랩 Cascade 모드: 이동된 작업과 겹치는 동일 구역·호선 작업을 뒤로 밀기
+function cascadeOverlap(movedTask) {
+  const area = movedTask.area;
+  const proj = movedTask.proj;
+  const movedEnd = _parseLocalDate(movedTask.e);
+
+  const sameSector = ganttData.filter(t =>
+    t.id !== movedTask.id && t.area === area && t.proj === proj
+  );
+  sameSector.sort((a,b) => _parseLocalDate(a.s) - _parseLocalDate(b.s));
+
+  sameSector.forEach(t => {
+    const tStart = _parseLocalDate(t.s);
+    const tEnd   = _parseLocalDate(t.e);
+    // 겹치는 경우: 다른 작업의 시작일이 이동된 작업 종료일 이하
+    if (tStart <= movedEnd) {
+      const dur      = Math.round((tEnd.getTime()    - tStart.getTime())  / 86400000);
+      const pushDays = Math.round((movedEnd.getTime() - tStart.getTime()) / 86400000) + 1;
+      const newStart = new Date(tStart.getTime());
+      newStart.setDate(newStart.getDate() + pushDays);
+      const newEnd = new Date(newStart.getTime());
+      newEnd.setDate(newEnd.getDate() + dur);
+      t.s = _dateKey(newStart);
+      t.e = _dateKey(newEnd);
+    }
+  });
 }
 
 // 초기 렌더링
