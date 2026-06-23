@@ -1008,6 +1008,41 @@ def get_anchor_50stg(vessel_no: str = None) -> pd.DataFrame:
 # 앵커 이벤트 Excel 업로드 → DB 저장
 # ═══════════════════════════════════════════════════════════════
 
+def _load_wb_xlwings(file_bytes: bytes):
+    """DRM 보호 파일을 xlwings(Excel COM)로 읽어 openpyxl Workbook 반환, 실패 시 None"""
+    import tempfile, os
+    from openpyxl import load_workbook as _lw
+    try:
+        import xlwings as xw
+    except ImportError:
+        return None
+    tmp_path = conv_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+            tmp.write(file_bytes)
+            tmp_path = tmp.name
+        conv_path = tmp_path.replace(".xlsx", "_conv.xlsx")
+        app = xw.App(visible=False)
+        try:
+            xw_wb = app.books.open(tmp_path)
+            xw_wb.save(conv_path)
+            xw_wb.close()
+        finally:
+            app.quit()
+        with open(conv_path, "rb") as f:
+            return _lw(io.BytesIO(f.read()), data_only=True)
+    except Exception as xe:
+        logger.error("xlwings 변환 오류: %s", xe)
+        return None
+    finally:
+        for p in (tmp_path, conv_path):
+            if p and os.path.exists(p):
+                try:
+                    os.unlink(p)
+                except Exception:
+                    pass
+
+
 def _to_date_str(val) -> str | None:
     """openpyxl 셀 값 → 'YYYY-MM-DD' 문자열"""
     if val is None:
@@ -1088,13 +1123,18 @@ def upload_anchor_excel(file_bytes: bytes) -> dict:
     except Exception as e:
         msg = str(e)
         if "zip file" in msg.lower() or "not a zip" in msg.lower():
-            result["errors"].append(
-                "파일 형식 오류: .xls(구버전) 파일은 지원되지 않습니다. "
-                "Excel에서 [다른 이름으로 저장 → Excel 통합 문서(.xlsx)]로 저장 후 다시 업로드하세요."
-            )
+            # DRM 보호 파일 — xlwings로 재시도 (Excel COM 경유)
+            wb = _load_wb_xlwings(file_bytes)
+            if wb is None:
+                result["errors"].append(
+                    "파일 형식 오류: DRM 보호 파일이거나 .xls(구버전) 파일입니다. "
+                    "Excel에서 파일을 열고 [다른 이름으로 저장 → Excel 통합 문서(.xlsx)]로 저장 후 다시 업로드하거나, "
+                    "아래 '직접 입력' 섹션을 이용하세요."
+                )
+                return result
         else:
             result["errors"].append(f"파일 읽기 오류: {msg}")
-        return result
+            return result
 
     # ── Sheet: 호선정보 ────────────────────────────────────────
     if "호선정보" in wb.sheetnames:
@@ -1209,3 +1249,108 @@ def upload_anchor_excel(file_bytes: bytes) -> dict:
         get_anchor_50stg.clear()
 
     return result
+
+
+# ═══════════════════════════════════════════════════════════════
+# 직접 입력용 저장 함수
+# ═══════════════════════════════════════════════════════════════
+
+def save_vessel_direct(vessel_no: str, vessel_type: str,
+                       거주구일=None, 비고=None) -> bool:
+    """호선 단건 Upsert"""
+    try:
+        execute_query("""
+            IF EXISTS (SELECT 1 FROM lq_meet_vessel WHERE vessel_no=?)
+                UPDATE lq_meet_vessel
+                SET vessel_type=?,거주구탑재예정일=?,비고=?,updated_at=GETDATE()
+                WHERE vessel_no=?
+            ELSE
+                INSERT INTO lq_meet_vessel (vessel_no,vessel_type,거주구탑재예정일,비고)
+                VALUES (?,?,?,?)
+        """, (vessel_no,
+              vessel_type, 거주구일 or None, 비고 or None, vessel_no,
+              vessel_no, vessel_type, 거주구일 or None, 비고 or None))
+        get_vessels.clear()
+        return True
+    except Exception as e:
+        logger.error("호선 저장 오류: %s\n%s", e, traceback.format_exc())
+        return False
+
+
+def save_anchor_30stg_direct(vessel_no: str, rows: list) -> int:
+    """30STG 앵커 직접 입력. rows: [{"block_no":str, "blk_in_date":..., "blk_out_date":...}]"""
+    count = 0
+    try:
+        conn = get_connection()
+        cur  = conn.cursor()
+        for r in rows:
+            bno   = str(r.get("block_no", "")).strip()
+            d_in  = _to_date_str(r.get("blk_in_date"))
+            d_out = _to_date_str(r.get("blk_out_date"))
+            if not bno:
+                continue
+            cur.execute("""
+                IF EXISTS (SELECT 1 FROM lq_meet_anchor_30stg WHERE vessel_no=? AND block_no=?)
+                    UPDATE lq_meet_anchor_30stg
+                    SET blk_in_date=?,blk_out_date=?,updated_at=GETDATE()
+                    WHERE vessel_no=? AND block_no=?
+                ELSE
+                    INSERT INTO lq_meet_anchor_30stg (vessel_no,block_no,blk_in_date,blk_out_date)
+                    VALUES (?,?,?,?)
+            """, (vessel_no, bno, d_in, d_out, vessel_no, bno,
+                  vessel_no, bno, d_in, d_out))
+            count += 1
+        conn.commit()
+        conn.close()
+        get_anchor_30stg.clear()
+    except Exception as e:
+        logger.error("30STG 직접 저장 오류: %s\n%s", e, traceback.format_exc())
+        return -1
+    return count
+
+
+def save_anchor_50stg_direct(vessel_no: str, vessel_type: str, rows: list) -> int:
+    """50STG 앵커 직접 입력. rows: [{"deck":str, "mount_end":..., "insp_end":...}]"""
+    count = 0
+    try:
+        conn = get_connection()
+        cur  = conn.cursor()
+        for r in rows:
+            dk      = str(r.get("deck", "")).strip()
+            d_mount = _to_date_str(r.get("mount_end"))
+            d_insp  = _to_date_str(r.get("insp_end"))
+            if not dk:
+                continue
+            d_attach = d_weld = d_floor = d_wall = None
+            if d_mount and vessel_type in ("LNG", "CONT"):
+                try:
+                    mount_dt = datetime.date.fromisoformat(d_mount)
+                    calc = _calc_sunggak_from_ref(mount_dt, dk, vessel_type)
+                    d_attach = str(calc["sunggak_attach_end"])  if calc.get("sunggak_attach_end")  else None
+                    d_weld   = str(calc["sunggak_weld_end"])    if calc.get("sunggak_weld_end")    else None
+                    d_floor  = str(calc["floor_straight_date"]) if calc.get("floor_straight_date") else None
+                    d_wall   = str(calc["wall_straight_date"])  if calc.get("wall_straight_date")  else None
+                except Exception:
+                    pass
+            cur.execute("""
+                IF EXISTS (SELECT 1 FROM lq_meet_anchor_50stg WHERE vessel_no=? AND deck=?)
+                    UPDATE lq_meet_anchor_50stg
+                    SET mount_start_date=?,sunggak_attach_end=?,sunggak_weld_end=?,
+                        floor_straight_date=?,wall_straight_date=?,inspection_date=?,
+                        updated_at=GETDATE()
+                    WHERE vessel_no=? AND deck=?
+                ELSE
+                    INSERT INTO lq_meet_anchor_50stg
+                      (vessel_no,deck,mount_start_date,sunggak_attach_end,sunggak_weld_end,
+                       floor_straight_date,wall_straight_date,inspection_date)
+                    VALUES (?,?,?,?,?,?,?,?)
+            """, (vessel_no, dk, d_mount, d_attach, d_weld, d_floor, d_wall, d_insp, vessel_no, dk,
+                  vessel_no, dk, d_mount, d_attach, d_weld, d_floor, d_wall, d_insp))
+            count += 1
+        conn.commit()
+        conn.close()
+        get_anchor_50stg.clear()
+    except Exception as e:
+        logger.error("50STG 직접 저장 오류: %s\n%s", e, traceback.format_exc())
+        return -1
+    return count

@@ -19,8 +19,10 @@ from data.meeting_ref_data import (
     get_logic_rules, save_logic_rules, default_rules_df,
     get_calendar,    add_calendar_date, delete_calendar_date,
     generate_anchor_template,
-    get_vessels, get_anchor_30stg, get_anchor_50stg,
+    get_vessels,     get_anchor_30stg, get_anchor_50stg,
     upload_anchor_excel,
+    save_vessel_direct, save_anchor_30stg_direct, save_anchor_50stg_direct,
+    get_block_deck_map,
 )
 
 logger = logging.getLogger(__name__)
@@ -338,6 +340,181 @@ def _tab_rules():
 
 
 # ═══════════════════════════════════════════════════════════════
+# 앵커 직접 입력 헬퍼
+# ═══════════════════════════════════════════════════════════════
+
+def _direct_vessel():
+    """호선 직접 등록/조회"""
+    try:
+        vdf = get_vessels()
+    except Exception:
+        vdf = pd.DataFrame(columns=["vessel_no", "vessel_type", "거주구탑재예정일", "비고"])
+
+    if not vdf.empty:
+        st.dataframe(
+            vdf.rename(columns={"vessel_no": "호선번호", "vessel_type": "선종",
+                                 "거주구탑재예정일": "거주구탑재 예정일", "비고": "비고"}),
+            use_container_width=True, hide_index=True,
+        )
+
+    with st.form("direct_vessel_form", clear_on_submit=True):
+        c1, c2, c3, c4 = st.columns([2, 2, 3, 3])
+        with c1:
+            v_no   = st.text_input("호선번호*", placeholder="예) 3001")
+        with c2:
+            v_type = st.selectbox("선종*", ["LNG", "CONT"])
+        with c3:
+            v_date = st.date_input("거주구탑재 예정일", value=None,
+                                   key="direct_vessel_date")
+        with c4:
+            v_remark = st.text_input("비고", placeholder="선택 입력")
+        submitted = st.form_submit_button("등록/수정", type="primary")
+
+    if submitted:
+        if not v_no.strip():
+            st.warning("호선번호를 입력해 주세요.")
+        else:
+            ok = save_vessel_direct(
+                v_no.strip(), v_type,
+                str(v_date) if v_date else None,
+                v_remark.strip() or None,
+            )
+            if ok:
+                st.success(f"호선 {v_no.strip()} 등록/수정 완료.")
+            else:
+                st.error("오류가 발생했습니다. 관리자에게 문의해 주세요.")
+
+
+def _direct_30stg():
+    """30STG 앵커 직접 입력"""
+    try:
+        vessels = get_vessels()
+    except Exception:
+        vessels = pd.DataFrame(columns=["vessel_no", "vessel_type"])
+
+    if vessels.empty:
+        st.info("먼저 '호선 등록' 탭에서 호선을 등록해 주세요.")
+        return
+
+    vessel_list = vessels["vessel_no"].tolist()
+    sel_vessel = st.selectbox("호선 선택", vessel_list, key="direct_30stg_vessel")
+    sel_vtype  = vessels.loc[vessels["vessel_no"] == sel_vessel, "vessel_type"].iloc[0]
+
+    # 블럭 목록 로드
+    try:
+        blk_df = get_block_deck_map(sel_vtype)
+        blocks = blk_df["block_no"].tolist() if not blk_df.empty else []
+    except Exception:
+        blocks = []
+
+    # 기존 데이터 로드
+    try:
+        exist = get_anchor_30stg(sel_vessel)
+    except Exception:
+        exist = pd.DataFrame(columns=["vessel_no", "block_no", "blk_in_date", "blk_out_date"])
+
+    exist_map = {}
+    if not exist.empty:
+        for _, r in exist.iterrows():
+            exist_map[r["block_no"]] = r
+
+    rows = []
+    for b in blocks:
+        r = exist_map.get(b, {})
+        rows.append({
+            "block_no":    b,
+            "blk_in_date":  str(r.get("blk_in_date", ""))[:10] if r.get("blk_in_date") else "",
+            "blk_out_date": str(r.get("blk_out_date", ""))[:10] if r.get("blk_out_date") else "",
+        })
+
+    edit_df = pd.DataFrame(rows)
+    st.caption(f"호선: **{sel_vessel}** ({sel_vtype}) · 블럭 {len(rows)}개")
+    edited = st.data_editor(
+        edit_df,
+        column_config={
+            "block_no":    st.column_config.TextColumn("블럭번호", disabled=True, width="small"),
+            "blk_in_date": st.column_config.TextColumn("입고일 (YYYY-MM-DD)", width="medium"),
+            "blk_out_date":st.column_config.TextColumn("탑재일 (YYYY-MM-DD)", width="medium"),
+        },
+        use_container_width=True, hide_index=True,
+        key=f"direct_30stg_editor_{sel_vessel}",
+    )
+
+    if st.button("저장", key="direct_30stg_save", type="primary"):
+        rows_to_save = edited.to_dict("records")
+        n = save_anchor_30stg_direct(sel_vessel, rows_to_save)
+        if n >= 0:
+            st.success(f"{n}건 저장 완료.")
+        else:
+            st.error("오류가 발생했습니다. 관리자에게 문의해 주세요.")
+
+
+def _direct_50stg():
+    """50STG 앵커 직접 입력 (탑재종료일 + 검사일 → 중간 날짜 자동 계산)"""
+    try:
+        vessels = get_vessels()
+    except Exception:
+        vessels = pd.DataFrame(columns=["vessel_no", "vessel_type"])
+
+    if vessels.empty:
+        st.info("먼저 '호선 등록' 탭에서 호선을 등록해 주세요.")
+        return
+
+    vessel_list = vessels["vessel_no"].tolist()
+    sel_vessel = st.selectbox("호선 선택", vessel_list, key="direct_50stg_vessel")
+    sel_vtype  = vessels.loc[vessels["vessel_no"] == sel_vessel, "vessel_type"].iloc[0]
+
+    # 데크 목록 (데크 순서표 기반)
+    try:
+        dk_df  = get_deck_order(sel_vtype)
+        decks  = dk_df.sort_values("order_no")["deck"].tolist() if not dk_df.empty else []
+    except Exception:
+        decks  = []
+
+    # 기존 데이터 로드
+    try:
+        exist = get_anchor_50stg(sel_vessel)
+    except Exception:
+        exist = pd.DataFrame()
+
+    exist_map = {}
+    if not exist.empty:
+        for _, r in exist.iterrows():
+            exist_map[r["deck"]] = r
+
+    rows = []
+    for dk in decks:
+        r = exist_map.get(dk, {})
+        rows.append({
+            "deck":       dk,
+            "mount_end":  str(r.get("mount_start_date", ""))[:10] if r.get("mount_start_date") else "",
+            "insp_end":   str(r.get("inspection_date", ""))[:10]  if r.get("inspection_date")  else "",
+        })
+
+    edit_df = pd.DataFrame(rows)
+    st.caption(f"호선: **{sel_vessel}** ({sel_vtype}) · 데크 {len(rows)}개 &nbsp;|&nbsp; "
+               f"취부·용접·곡직 날짜는 기준정보 소요일로 자동 계산됩니다.")
+    edited = st.data_editor(
+        edit_df,
+        column_config={
+            "deck":      st.column_config.TextColumn("데크", disabled=True, width="small"),
+            "mount_end": st.column_config.TextColumn("블럭탑재 종료일 (YYYY-MM-DD)", width="medium"),
+            "insp_end":  st.column_config.TextColumn("선각검사 완료일 (YYYY-MM-DD)", width="medium"),
+        },
+        use_container_width=True, hide_index=True,
+        key=f"direct_50stg_editor_{sel_vessel}",
+    )
+
+    if st.button("저장", key="direct_50stg_save", type="primary"):
+        rows_to_save = edited.to_dict("records")
+        n = save_anchor_50stg_direct(sel_vessel, sel_vtype, rows_to_save)
+        if n >= 0:
+            st.success(f"{n}건 저장 완료 (취부·용접·곡직 날짜 자동 계산).")
+        else:
+            st.error("오류가 발생했습니다. 관리자에게 문의해 주세요.")
+
+
+# ═══════════════════════════════════════════════════════════════
 # 서브탭 8: 앵커 이벤트 Excel 양식 다운로드
 # ═══════════════════════════════════════════════════════════════
 
@@ -410,6 +587,24 @@ def _tab_anchor_template():
 
     st.markdown("---")
 
+    # ── 직접 입력 ─────────────────────────────────────────────────
+    st.markdown("#### ✏️ 직접 입력 (Excel 없이 입력)")
+    st.caption("Excel 업로드 없이 직접 데이터를 입력·저장할 수 있습니다.")
+
+    direct_tab = st.radio(
+        "입력 대상", ["🚢 호선 등록", "📦 30STG 앵커", "🏗️ 50STG 앵커"],
+        horizontal=True, key="ref_anchor_direct_tab",
+    )
+
+    if direct_tab == "🚢 호선 등록":
+        _direct_vessel()
+    elif direct_tab == "📦 30STG 앵커":
+        _direct_30stg()
+    else:
+        _direct_50stg()
+
+    st.markdown("---")
+
     # ── 현재 저장된 앵커 데이터 조회 ────────────────────────────
     with st.expander("현재 저장된 데이터 조회", expanded=False):
         sub = st.radio("조회 대상", ["호선정보", "30 STG 앵커", "50 STG 앵커"],
@@ -423,7 +618,7 @@ def _tab_anchor_template():
                 df = get_anchor_50stg()
 
             if df is None or df.empty:
-                st.info("저장된 데이터가 없습니다. 양식을 작성하여 업로드해 주세요.")
+                st.info("저장된 데이터가 없습니다.")
             else:
                 st.dataframe(df, use_container_width=True, hide_index=True)
         except Exception:
