@@ -124,14 +124,46 @@ _INIT_DECK_ORDER = [
     ("CONT", "F-DK",   7), ("CONT", "NAV-DK", 8),
 ]
 
+# ── 블럭 → 데크 매핑 (30STG 블럭이 속한 50STG 데크) ──────────
+# vessel_type, block_no, deck
+_INIT_BLOCK_DECK_MAP = [
+    # LNG (21 블럭)
+    ("LNG","M51NS","NAV-DK"), ("LNG","M51NP","NAV-DK"),
+    ("LNG","M900S","NAV-DK"), ("LNG","M900P","NAV-DK"),
+    ("LNG","M610C","D-DK"),
+    ("LNG","M510S","D-DK"),   ("LNG","M510P","D-DK"),
+    ("LNG","M410S","C-DK"),   ("LNG","M410P","C-DK"),
+    ("LNG","M31NS","B-DK"),   ("LNG","M31NP","B-DK"),
+    ("LNG","M31OS","B-DK"),   ("LNG","M31OP","B-DK"),
+    ("LNG","M220S","A-DK"),   ("LNG","M220P","A-DK"),
+    ("LNG","M210S","A-DK"),   ("LNG","M210P","A-DK"),
+    ("LNG","M120S","UPP-DK"), ("LNG","M120P","UPP-DK"),
+    ("LNG","M110S","UPP-DK"), ("LNG","M110P","UPP-DK"),
+    # CONT (28 블럭)
+    ("CONT","M940S","NAV-DK"), ("CONT","M930P","NAV-DK"),
+    ("CONT","M920S","NAV-DK"), ("CONT","M920P","NAV-DK"),
+    ("CONT","M910S","NAV-DK"), ("CONT","M910P","NAV-DK"),
+    ("CONT","M900S","NAV-DK"), ("CONT","M900P","NAV-DK"),
+    ("CONT","M710S","F-DK"),   ("CONT","M710P","F-DK"),
+    ("CONT","M610S","E-DK"),   ("CONT","M610P","E-DK"),
+    ("CONT","M510S","D-DK"),   ("CONT","M510P","D-DK"),
+    ("CONT","M410S","C-DK"),   ("CONT","M410P","C-DK"),
+    ("CONT","M320S","B-DK"),   ("CONT","M320P","B-DK"),
+    ("CONT","M310S","B-DK"),   ("CONT","M310P","B-DK"),
+    ("CONT","M220S","A-DK"),   ("CONT","M220P","A-DK"),
+    ("CONT","M210S","A-DK"),   ("CONT","M210P","A-DK"),
+    ("CONT","M120S","A-DK"),   ("CONT","M120P","A-DK"),
+    ("CONT","M110S","UPP-DK"), ("CONT","M110P","UPP-DK"),
+]
+
 # ── 로직 규칙 ────────────────────────────────────────────────
 _INIT_RULES = [
     # rule_id, vessel_type, rule_name,
     # pre_area, pre_work, pre_event, offset_days,
     # suc_area, suc_work, is_active
     (1,"ALL","화기→도장 리드",
-     "lower_deck","목의화기1차","END",-2,
-     "upper_deck","도장PB",1),
+     "upper_deck","목의화기1차","END",-2,
+     "lower_deck","도장PB",1),
     (2,"ALL","트렁크→배선",
      "in_outside","트렁크배선","END",0,
      "all_deck","배선",1),
@@ -205,6 +237,11 @@ _ALTER_50STG_COLS = [
     "선각용접",
     "선각FLOOR곡직",
     "선각WALL곡직",
+]
+
+# 기존 lq_meet_anchor_50stg에 wall_straight_date 컬럼 마이그레이션
+_ALTER_ANCHOR_50STG_COLS = [
+    ("wall_straight_date", "DATE"),
 ]
 
 _DDL_INOUT = """
@@ -321,8 +358,21 @@ CREATE TABLE lq_meet_anchor_50stg (
     inspection_plan          DATE,
     inspection_actual        DATE,
     inspection_delay_reason  NVARCHAR(200),
+    wall_straight_date       DATE,
     updated_at               DATETIME       DEFAULT GETDATE(),
     CONSTRAINT uq_anchor50 UNIQUE (vessel_no, deck)
+)
+"""
+
+_DDL_BLOCK_DECK_MAP = """
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='lq_meet_ref_block_deck' AND xtype='U')
+CREATE TABLE lq_meet_ref_block_deck (
+    id          INT IDENTITY(1,1) PRIMARY KEY,
+    vessel_type NVARCHAR(10)  NOT NULL,
+    block_no    NVARCHAR(20)  NOT NULL,
+    deck        NVARCHAR(20)  NOT NULL,
+    updated_at  DATETIME      DEFAULT GETDATE(),
+    CONSTRAINT uq_block_deck UNIQUE (vessel_type, block_no)
 )
 """
 
@@ -340,7 +390,8 @@ def init_tables() -> bool:
         for ddl in [_DDL_30STG, _DDL_50STG, _DDL_INOUT,
                     _DDL_SEQUENCE, _DDL_DECK_ORDER,
                     _DDL_RULES, _DDL_CALENDAR,
-                    _DDL_VESSEL, _DDL_ANCHOR_30STG, _DDL_ANCHOR_50STG]:
+                    _DDL_VESSEL, _DDL_ANCHOR_30STG, _DDL_ANCHOR_50STG,
+                    _DDL_BLOCK_DECK_MAP]:
             cur.execute(ddl)
         conn.commit()
 
@@ -353,6 +404,15 @@ def init_tables() -> bool:
                 )
                 ALTER TABLE lq_meet_ref_50stg ADD [{col}] INT DEFAULT 0
             """)
+        # 기존 lq_meet_anchor_50stg에 wall_straight_date 컬럼 마이그레이션
+        for col, col_type in _ALTER_ANCHOR_50STG_COLS:
+            cur.execute(f"""
+                IF NOT EXISTS (
+                    SELECT * FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME='lq_meet_anchor_50stg' AND COLUMN_NAME=N'{col}'
+                )
+                ALTER TABLE lq_meet_anchor_50stg ADD [{col}] {col_type}
+            """)
         conn.commit()
 
         _seed_30stg(cur)
@@ -361,6 +421,7 @@ def init_tables() -> bool:
         _seed_sequence(cur)
         _seed_deck_order(cur)
         _seed_rules(cur)
+        _seed_block_deck_map(cur)
         conn.commit()
         conn.close()
         return True
@@ -441,6 +502,15 @@ def _seed_rules(cur):
               row[6],row[7],row[8],row[9]))
 
 
+def _seed_block_deck_map(cur):
+    for row in _INIT_BLOCK_DECK_MAP:
+        cur.execute("""
+            IF NOT EXISTS (SELECT 1 FROM lq_meet_ref_block_deck WHERE vessel_type=? AND block_no=?)
+            INSERT INTO lq_meet_ref_block_deck (vessel_type,block_no,deck)
+            VALUES (?,?,?)
+        """, (row[0], row[1], row[0], row[1], row[2]))
+
+
 # ═══════════════════════════════════════════════════════════════
 # 조회 함수
 # ═══════════════════════════════════════════════════════════════
@@ -506,6 +576,25 @@ def get_logic_rules() -> pd.DataFrame:
 def get_calendar() -> pd.DataFrame:
     return run_query("""SELECT cal_date,reason FROM lq_meet_calendar
                         ORDER BY cal_date""")
+
+
+@st.cache_data(ttl=300)
+def get_block_deck_map(vessel_type: str = None) -> pd.DataFrame:
+    sql = "SELECT vessel_type,block_no,deck FROM lq_meet_ref_block_deck"
+    if vessel_type:
+        sql += " WHERE vessel_type=?"
+        return run_query(sql + " ORDER BY block_no", params=(vessel_type,))
+    return run_query(sql + " ORDER BY vessel_type,block_no")
+
+
+def get_block_to_deck_dict(vessel_type: str) -> dict:
+    """블럭번호 → 데크 딕셔너리 반환 (계산 엔진용, 캐시 없음)"""
+    df = get_block_deck_map(vessel_type)
+    if df.empty:
+        # DB 없을 때 상수에서 폴백
+        rows = [r for r in _INIT_BLOCK_DECK_MAP if r[0] == vessel_type]
+        return {r[1]: r[2] for r in rows}
+    return dict(zip(df["block_no"], df["deck"]))
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -773,13 +862,15 @@ def generate_anchor_template() -> bytes:
     ws3.freeze_panes = "A2"
     headers3 = ["호선번호", "선종(LNG/CONT)", "데크",
                 "탑재시작일(마지막블럭탑재)",
-                "선각검사_계획", "선각검사_실적", "선각검사_지연사유"]
-    widths3  = [14, 16, 12, 24, 18, 18, 30]
+                "선각검사_계획", "선각검사_실적", "선각검사_지연사유",
+                "선각WALL곡직완료일"]
+    widths3  = [14, 16, 12, 24, 18, 18, 30, 20]
     _write_header(ws3, headers3, widths3)
     _write_example(ws3, ["1234", "LNG", "A-DK",
                           datetime.date(2026, 1, 20),
-                          datetime.date(2026, 2, 5), "", ""])
-    _add_blank_rows(ws3, 3, 50, len(headers3), date_cols=[4, 5, 6])
+                          datetime.date(2026, 2, 5), "", "",
+                          datetime.date(2026, 2, 20)])
+    _add_blank_rows(ws3, 3, 50, len(headers3), date_cols=[4, 5, 6, 8])
 
     # ── 안내 시트 ─────────────────────────────────────────────
     ws_guide = wb.create_sheet("입력안내", 0)
@@ -790,7 +881,7 @@ def generate_anchor_template() -> bytes:
         ["  시트명",        "내용"],
         ["  호선정보",      "진행 중인 호선 목록 및 거주구탑재 예정일"],
         ["  30STG_앵커",    "단블럭별 입고일·탑재일 (30 STG 공정 계산 기준점)"],
-        ["  50STG_앵커",    "데크별 탑재시작일·선각검사일 (50 STG 공정 계산 기준점)"],
+        ["  50STG_앵커",    "데크별 탑재시작일·선각검사일·WALL곡직완료일 (50 STG 공정 계산 기준점)"],
         ["", ""],
         ["  공통 주의사항", ""],
         ["  ·", "날짜 형식: YYYY-MM-DD (예: 2026-01-15)"],
@@ -843,7 +934,7 @@ def get_anchor_30stg(vessel_no: str = None) -> pd.DataFrame:
 @st.cache_data(ttl=60)
 def get_anchor_50stg(vessel_no: str = None) -> pd.DataFrame:
     sql = """SELECT vessel_no,deck,mount_start_date,inspection_plan,
-                    inspection_actual,inspection_delay_reason
+                    inspection_actual,inspection_delay_reason,wall_straight_date
              FROM lq_meet_anchor_50stg"""
     if vessel_no:
         return run_query(sql + " WHERE vessel_no=? ORDER BY deck", params=(vessel_no,))
@@ -944,8 +1035,8 @@ def upload_anchor_excel(file_bytes: bytes) -> dict:
         conn = get_connection()
         cur  = conn.cursor()
         for row in ws.iter_rows(min_row=2, values_only=True):
-            vals = (list(row) + [None] * 7)[:7]
-            vessel_no, _, deck, mount_start, insp_plan, insp_actual, delay_reason = vals
+            vals = (list(row) + [None] * 8)[:8]
+            vessel_no, _, deck, mount_start, insp_plan, insp_actual, delay_reason, wall_straight = vals
             if not vessel_no or not deck:
                 continue
             vno  = str(vessel_no).strip()
@@ -953,19 +1044,20 @@ def upload_anchor_excel(file_bytes: bytes) -> dict:
             d_mount   = _to_date_str(mount_start)
             d_plan    = _to_date_str(insp_plan)
             d_actual  = _to_date_str(insp_actual)
+            d_wall    = _to_date_str(wall_straight)
             cur.execute("""
                 IF EXISTS (SELECT 1 FROM lq_meet_anchor_50stg WHERE vessel_no=? AND deck=?)
                     UPDATE lq_meet_anchor_50stg
                     SET mount_start_date=?,inspection_plan=?,inspection_actual=?,
-                        inspection_delay_reason=?,updated_at=GETDATE()
+                        inspection_delay_reason=?,wall_straight_date=?,updated_at=GETDATE()
                     WHERE vessel_no=? AND deck=?
                 ELSE
                     INSERT INTO lq_meet_anchor_50stg
                       (vessel_no,deck,mount_start_date,inspection_plan,
-                       inspection_actual,inspection_delay_reason)
-                    VALUES (?,?,?,?,?,?)
-            """, (vno, deck, d_mount, d_plan, d_actual, delay_reason, vno, deck,
-                  vno, deck, d_mount, d_plan, d_actual, delay_reason))
+                       inspection_actual,inspection_delay_reason,wall_straight_date)
+                    VALUES (?,?,?,?,?,?,?)
+            """, (vno, deck, d_mount, d_plan, d_actual, delay_reason, d_wall, vno, deck,
+                  vno, deck, d_mount, d_plan, d_actual, delay_reason, d_wall))
             result["anchor50"] += 1
         conn.commit()
         conn.close()
