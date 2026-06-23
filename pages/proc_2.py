@@ -194,7 +194,7 @@ def _render_gantt_component(tasks: list, is_editable: bool = False,
 # ══════════════════════════════════════════════
 #  탭 상수
 # ══════════════════════════════════════════════
-TAB_OPTIONS = ["종합 공정 현황", "구역별 상세 현황", "기준정보"]
+TAB_OPTIONS = ["종합 공정 현황", "구역별 상세 현황", "기준정보", "공정회의록"]
 
 
 # ══════════════════════════════════════════════
@@ -1143,4 +1143,11 @@ def render():
         else:
             from pages.proc_2_ref import render_ref_tab
             render_ref_tab()
-                st.caption(f"💡 현재 접속자 ID: `{current_user}` — 이 값을 사용자ID에 입력하면 현재 접속자에게 권한 부여")
+            st.caption(f"💡 현재 접속자 ID: `{current_user}` — 이 값을 사용자ID에 입력하면 현재 접속자에게 권한 부여")
+
+    # ══════════════════════════════════════════════
+    #  Tab 4: 공정회의록
+    # ══════════════════════════════════════════════
+    elif tab_choice == tab_options[3]:
+        from pages.proc_2_meeting import render_meeting_tab
+        render_meeting_tab(current_user=current_user, is_admin=st.session_state.get("is_admin", False))
