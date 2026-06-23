@@ -194,7 +194,7 @@ def _render_gantt_component(tasks: list, is_editable: bool = False,
 # ══════════════════════════════════════════════
 #  탭 상수
 # ══════════════════════════════════════════════
-TAB_OPTIONS = ["종합 공정 현황", "구역별 상세 현황"]
+TAB_OPTIONS = ["종합 공정 현황", "구역별 상세 현황", "기준정보"]
 
 
 # ══════════════════════════════════════════════
@@ -1132,4 +1132,15 @@ def render():
                         st.rerun()
                     else:
                         st.warning("사용자ID와 이름을 모두 입력해주세요.")
+
+    # ══════════════════════════════════════════════
+    #  Tab 3: 기준정보 (관리자 전용)
+    # ══════════════════════════════════════════════
+    elif tab_choice == tab_options[2]:
+        st.markdown("##### 🗂️ 기준정보 관리")
+        if not st.session_state.get("is_admin"):
+            st.warning("⚠️ 관리자 권한이 필요합니다. 사이드바에서 관리자 비밀번호를 입력해 주세요.")
+        else:
+            from pages.proc_2_ref import render_ref_tab
+            render_ref_tab()
                 st.caption(f"💡 현재 접속자 ID: `{current_user}` — 이 값을 사용자ID에 입력하면 현재 접속자에게 권한 부여")
