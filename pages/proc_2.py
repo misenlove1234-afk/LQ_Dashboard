@@ -174,11 +174,11 @@ def _render_gantt_ctrl_row(ss: dict):
     lc = st.columns([1.25, 2.6, 1.5, 2.3])
     lc[0].markdown(f'{_LBL}📋 표시 설정</span>', unsafe_allow_html=True)
     lc[1].markdown(f'{_LBL}↔ 열 폭</span>',     unsafe_allow_html=True)
-    lc[2].markdown(f'{_LBL}🔀 오버랩</span>',    unsafe_allow_html=True)
+    lc[2].markdown(f'{_LBL}📍 STG</span>',       unsafe_allow_html=True)
     lc[3].markdown(f'{_LBL}📍 이동</span>',      unsafe_allow_html=True)
 
     # ── 버튼 행 ──
-    bc = st.columns([1.25, 0.86, 0.86, 0.88, 1.5, 1.15, 1.15])
+    bc = st.columns([1.25, 0.86, 0.86, 0.88, 0.75, 0.75, 1.15, 1.15])
 
     # [표시] 실적 보기
     with bc[0]:
@@ -212,24 +212,28 @@ def _render_gantt_ctrl_row(ss: dict):
             ss['proc2_gantt_col_width'] = 36
             st.rerun()
 
-    # [오버랩] 모드 전환 (lane: 레인 재배치 / cascade: 날짜 밀기)
+    # [STG] 30 / 50 선택 (사이드바 체크박스와 동일 효력)
     with bc[4]:
-        _om = ss.get('proc2_overlap_mode', 'lane')
-        if st.button(
-            "→ 날짜 밀기" if _om == 'cascade' else "↕ 레인 재배치",
-            key="proc2_btn_overlap", use_container_width=True,
-            type="primary" if _om == 'cascade' else "secondary",
-            help="레인 재배치: 겹치는 작업을 아래 행으로 / 날짜 밀기: 이후 작업을 뒤로 밀기",
-        ):
-            ss['proc2_overlap_mode'] = 'lane' if _om == 'cascade' else 'cascade'
+        _stg = ss.get('proc2_gantt_stg', 'all')
+        if st.button("30STG" + (" ✓" if _stg == '30' else ""),
+                     key="proc2_btn_stg30", use_container_width=True,
+                     type="primary" if _stg == '30' else "secondary"):
+            ss['proc2_gantt_stg'] = 'all' if _stg == '30' else '30'
+            st.rerun()
+    with bc[5]:
+        _stg = ss.get('proc2_gantt_stg', 'all')
+        if st.button("50STG" + (" ✓" if _stg == '50' else ""),
+                     key="proc2_btn_stg50", use_container_width=True,
+                     type="primary" if _stg == '50' else "secondary"):
+            ss['proc2_gantt_stg'] = 'all' if _stg == '50' else '50'
             st.rerun()
 
     # [이동] 1주 앞/뒤
-    with bc[5]:
+    with bc[6]:
         if st.button("◀ 1주전", key="proc2_btn_prev", use_container_width=True):
             ss['proc2_gantt_week_offset'] = ss.get('proc2_gantt_week_offset', 0) - 1
             st.rerun()
-    with bc[6]:
+    with bc[7]:
         if st.button("1주후 ▶", key="proc2_btn_next", use_container_width=True):
             ss['proc2_gantt_week_offset'] = ss.get('proc2_gantt_week_offset', 0) + 1
             st.rerun()
@@ -614,7 +618,7 @@ def render():
     if 'proc2_gantt_col_width'   not in _ss: _ss['proc2_gantt_col_width']   = 24
     if 'proc2_gantt_actuals'     not in _ss: _ss['proc2_gantt_actuals']     = False
     if 'proc2_gantt_week_offset' not in _ss: _ss['proc2_gantt_week_offset'] = 0
-    if 'proc2_overlap_mode'      not in _ss: _ss['proc2_overlap_mode']      = 'lane'
+    if 'proc2_gantt_stg'         not in _ss: _ss['proc2_gantt_stg']         = 'all'
 
     # ══════════════════════════════════════════════
     #  간트 최대화 모드 — 사이드바는 유지, 메인 영역만 풀 너비
@@ -1074,25 +1078,14 @@ def render():
                 _nav_to_proj(_projs_active[_next_i])
 
         with col_pj:
-            _gantt_proj_opts = ["(전체)"] + _projs_active
-            _gantt_proj_prev = _ss.get('proc2_gantt_proj', "(전체)")
-            _gantt_proj_idx  = _gantt_proj_opts.index(_gantt_proj_prev) \
-                               if _gantt_proj_prev in _gantt_proj_opts else 0
-            _gantt_proj = st.selectbox(
-                "프로젝트", _gantt_proj_opts,
-                index=_gantt_proj_idx, key="proc2_gantt_proj_sel",
-                label_visibility="collapsed",
+            # 드롭다운 제거 — 현재 프로젝트 이름만 표시
+            _gantt_proj = _ss.get('proc2_gantt_proj', "(전체)")
+            _pj_label = _gantt_proj if _gantt_proj != "(전체)" else "전체"
+            st.markdown(
+                f'<div style="text-align:center;padding:7px 0;font-size:0.95rem;'
+                f'color:#e2e8f0;font-weight:700;">{_pj_label}</div>',
+                unsafe_allow_html=True,
             )
-            if _gantt_proj != _ss.get('proc2_gantt_proj'):
-                _ss['proc2_gantt_proj'] = _gantt_proj
-                if _gantt_proj != "(전체)":
-                    _ps, _pe = get_project_date_range(df_raw, _gantt_proj)
-                    _ss['proc2_gantt_proj_start'] = _ps
-                    _ss['proc2_gantt_proj_end']   = _pe
-                else:
-                    _ss.pop('proc2_gantt_proj_start', None)
-                    _ss.pop('proc2_gantt_proj_end', None)
-                st.rerun()
 
         # ③ 선택된 프로젝트의 기간 배지 표시
         if _ss.get('proc2_gantt_proj_start') and _ss.get('proc2_gantt_proj_end'):
@@ -1137,6 +1130,11 @@ def render():
             if _ss.get('proc2_gantt_proj', "(전체)") != "(전체)":
                 gantt_df = gantt_df[gantt_df['프로젝트'] == _page_proj]
                 gantt_label = _page_proj
+
+        # STG 버튼 필터 적용 (30STG 또는 50STG 선택 시 해당 STG만 표시)
+        _gantt_stg_filter = _ss.get('proc2_gantt_stg', 'all')
+        if _gantt_stg_filter != 'all' and 'STG' in gantt_df.columns:
+            gantt_df = gantt_df[gantt_df['STG'].astype(str).str.contains(_gantt_stg_filter, na=False)].copy()
 
         # row_mode: 공종만 필터(프로젝트·구역 미선택) → 호선별, 아니면 구역별
         row_mode = "ship" if (
