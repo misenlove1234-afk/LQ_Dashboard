@@ -144,6 +144,7 @@ body {
   background: var(--bg-header);
   color: #000000 !important; font-weight: 700; font-size: 16px; padding: 1px 0;
   position: sticky; z-index: 15;
+  border-color: #000000 !important;
 }
 .excel-gantt thead th.area-cell { z-index: 20; background: var(--bg-area); }
 .excel-gantt th.month-hdr { background: var(--bg-month) !important; color: #000000 !important; }
@@ -155,29 +156,32 @@ body {
 /* 토요일 — 노란색 계열 */
 .excel-gantt td.saturday { background: rgba(253,224,71,0.30) !important; }
 .excel-gantt th.saturday {
-  background: rgba(253,224,71,0.80) !important;
+  background: rgb(253,224,71) !important;
   color: #713f12 !important; font-weight: 700 !important;
 }
 body.light-theme .excel-gantt td.saturday { background: rgba(253,224,71,0.40) !important; }
 body.light-theme .excel-gantt th.saturday {
-  background: rgba(234,179,8,0.70) !important; color: #422006 !important;
+  background: rgb(234,179,8) !important; color: #422006 !important;
 }
 /* 공휴일 — 초록색 계열 (bar 셀 포함 열 전체 강조) */
 .excel-gantt td.holiday,
 .excel-gantt td.bar.holiday { background: rgba(134,239,172,0.35) !important; }
 .excel-gantt th.holiday {
-  background: rgba(34,197,94,0.75) !important;
+  background: rgb(34,197,94) !important;
   color: #14532d !important; font-weight: 700 !important;
 }
 body.light-theme .excel-gantt td.holiday,
 body.light-theme .excel-gantt td.bar.holiday { background: rgba(134,239,172,0.55) !important; }
 body.light-theme .excel-gantt th.holiday {
-  background: rgba(22,163,74,0.70) !important; color: #052e16 !important;
+  background: rgb(22,163,74) !important; color: #052e16 !important;
 }
 .excel-gantt td.today, .excel-gantt th.today {
   background: var(--today-bg) !important;
   border-left: 3px solid #ef4444 !important;
   color: #fca5a5; font-weight: 700;
+}
+.excel-gantt thead th.today {
+  background: rgba(244,63,94,0.85) !important;
 }
 
 /* ── Deck 구역 경계선 — 검정/흰색 고정 (테마별 CSS 변수 사용) ── */
@@ -616,7 +620,7 @@ function render() {
   if (visibleData.length === 0) {
     wrapEl.style.display = 'none';
     msgEl.style.display  = 'flex';
-    msgEl.innerHTML      = '⚠️ 표시할 작업이 없습니다. 위 <strong style="color:#7dd3fc;">숨기기 활성화</strong> 버튼으로 숨김 작업을 볼 수 있습니다.';
+    msgEl.innerHTML      = '⚠️ 표시할 작업이 없습니다. (표시여부 Y 작업이 없거나 필터 조건을 확인하세요.)';
     return;
   }
   wrapEl.style.display = 'block';

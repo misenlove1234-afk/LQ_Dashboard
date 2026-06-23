@@ -171,7 +171,7 @@ def _render_gantt_ctrl_row(ss: dict):
     _LBL = '<span style="font-size:0.72rem;color:#94a3b8;">'
 
     # ── 카테고리 레이블 행 ──
-    lc = st.columns([2.5, 2.6, 1.6, 1.5, 2.3])
+    lc = st.columns([1.25, 2.6, 1.6, 1.5, 2.3])
     lc[0].markdown(f'{_LBL}📋 표시 설정</span>', unsafe_allow_html=True)
     lc[1].markdown(f'{_LBL}↔ 열 폭</span>',     unsafe_allow_html=True)
     lc[2].markdown(f'{_LBL}🎨 테마</span>',      unsafe_allow_html=True)
@@ -179,18 +179,10 @@ def _render_gantt_ctrl_row(ss: dict):
     lc[4].markdown(f'{_LBL}📍 이동</span>',      unsafe_allow_html=True)
 
     # ── 버튼 행 ──
-    bc = st.columns([1.25, 1.25, 0.86, 0.86, 0.88, 1.6, 1.5, 1.15, 1.15])
+    bc = st.columns([1.25, 0.86, 0.86, 0.88, 1.6, 1.5, 1.15, 1.15])
 
-    # [표시] 숨기기
-    with bc[0]:
-        h_on = ss.get('proc2_gantt_hidden', False)
-        if st.button("숨기기 OFF" if h_on else "숨기기 ON",
-                     key="proc2_btn_hidden", use_container_width=True,
-                     type="primary" if h_on else "secondary"):
-            ss['proc2_gantt_hidden'] = not h_on
-            st.rerun()
     # [표시] 실적 보기
-    with bc[1]:
+    with bc[0]:
         ac_on = ss.get('proc2_gantt_actuals', False)
         if st.button("✅ 실적 ON" if ac_on else "📊 실적보기",
                      key="proc2_btn_actuals", use_container_width=True,
@@ -199,21 +191,21 @@ def _render_gantt_ctrl_row(ss: dict):
             st.rerun()
 
     # [열 폭] 좁게 / 보통 / 넓게
-    with bc[2]:
+    with bc[1]:
         w_on = ss.get('proc2_gantt_col_width', 24) == 16
         if st.button("좁게" + (" ✓" if w_on else ""),
                      key="proc2_btn_col_sm", use_container_width=True,
                      type="primary" if w_on else "secondary"):
             ss['proc2_gantt_col_width'] = 16
             st.rerun()
-    with bc[3]:
+    with bc[2]:
         w_on = ss.get('proc2_gantt_col_width', 24) == 24
         if st.button("보통" + (" ✓" if w_on else ""),
                      key="proc2_btn_col_md", use_container_width=True,
                      type="primary" if w_on else "secondary"):
             ss['proc2_gantt_col_width'] = 24
             st.rerun()
-    with bc[4]:
+    with bc[3]:
         w_on = ss.get('proc2_gantt_col_width', 24) == 36
         if st.button("넓게" + (" ✓" if w_on else ""),
                      key="proc2_btn_col_lg", use_container_width=True,
@@ -222,7 +214,7 @@ def _render_gantt_ctrl_row(ss: dict):
             st.rerun()
 
     # [테마] 라이트/다크
-    with bc[5]:
+    with bc[4]:
         lt_on = ss.get('proc2_gantt_light', False)
         if st.button("🌙 다크 모드" if lt_on else "☀ 라이트 모드",
                      key="proc2_btn_theme", use_container_width=True,
@@ -231,7 +223,7 @@ def _render_gantt_ctrl_row(ss: dict):
             st.rerun()
 
     # [오버랩] 모드 전환 (lane: 레인 재배치 / cascade: 날짜 밀기)
-    with bc[6]:
+    with bc[5]:
         _om = ss.get('proc2_overlap_mode', 'lane')
         if st.button(
             "→ 날짜 밀기" if _om == 'cascade' else "↕ 레인 재배치",
@@ -243,11 +235,11 @@ def _render_gantt_ctrl_row(ss: dict):
             st.rerun()
 
     # [이동] 1주 앞/뒤
-    with bc[7]:
+    with bc[6]:
         if st.button("◀ 1주전", key="proc2_btn_prev", use_container_width=True):
             ss['proc2_gantt_week_offset'] = ss.get('proc2_gantt_week_offset', 0) - 1
             st.rerun()
-    with bc[8]:
+    with bc[7]:
         if st.button("1주후 ▶", key="proc2_btn_next", use_container_width=True):
             ss['proc2_gantt_week_offset'] = ss.get('proc2_gantt_week_offset', 0) + 1
             st.rerun()
@@ -629,7 +621,6 @@ def render():
 
     # ── 간트 컨트롤 세션 상태 초기화 ─────────────────
     _ss = st.session_state
-    if 'proc2_gantt_hidden'      not in _ss: _ss['proc2_gantt_hidden']      = False
     if 'proc2_gantt_col_width'   not in _ss: _ss['proc2_gantt_col_width']   = 24
     if 'proc2_gantt_light'       not in _ss: _ss['proc2_gantt_light']       = False
     if 'proc2_gantt_actuals'     not in _ss: _ss['proc2_gantt_actuals']     = False
@@ -692,7 +683,7 @@ def render():
                                         current_user=current_user, height=1200,
                                         row_mode=row_mode,
                                         wrap_max_height="calc(100vh - 140px)",
-                                        show_hidden=_ss['proc2_gantt_hidden'],
+                                        show_hidden=False,
                                         col_width=_ss['proc2_gantt_col_width'],
                                         light_theme=_ss['proc2_gantt_light'],
                                         show_actuals=_ss['proc2_gantt_actuals'],
@@ -1147,11 +1138,10 @@ def render():
                     st.warning("프로젝트와 담당자를 입력해 주세요.")
 
         # 프로젝트 필터 적용:
-        # 페이지 드롭다운 선택이 있으면 df_raw 기반으로 해당 프로젝트 데이터 사용
+        # 사이드바 필터(STG·공종 등)를 유지하면서 해당 프로젝트만 추출
         _page_proj = _ss.get('proc2_gantt_proj', "(전체)")
         if _page_proj != "(전체)":
-            # 사이드바 필터와 무관하게 df_raw에서 해당 프로젝트만 추출
-            gantt_df = df_raw[df_raw['프로젝트'] == _page_proj].copy()
+            gantt_df = filtered_df[filtered_df['프로젝트'] == _page_proj].copy()
             gantt_label = _page_proj
         else:
             # 기존 로직 유지 (사이드바 필터 적용된 gantt_df)
@@ -1171,26 +1161,12 @@ def render():
         col_gh, col_gb = st.columns([6, 1])
         with col_gh:
             st.markdown(f"##### 📅 공정 타임라인 — {gantt_label} ({mode_text} 뷰 · {gantt_basis})")
-            st.caption(f"접속자: `{current_user}`")
+            _ro_note = "  🔒 읽기 전용" if not effective_editable else ""
+            st.caption(f"접속자: `{current_user}`{_ro_note}")
         with col_gb:
             if st.button("⛶ 최대화", key="proc2_gantt_maximize", use_container_width=True):
                 st.session_state["proc2_gantt_maximized"] = True
                 st.rerun()
-
-        # Fix #2: 읽기 전용 안내 — 표 밖 고정 스타일 (테마 영향 없음)
-        if not effective_editable:
-            _perm_msg = (
-                "🔒 읽기 전용 — 일정 변경이 필요하면 관리자에게 편집 권한을 요청하세요."
-                if not is_editable else
-                f"🔒 읽기 전용 ({gantt_basis} 보기) — 편집하려면 사이드바 '차트 조회 기준'을 **변경 계획**으로 설정하세요."
-            )
-            st.markdown(
-                f'<div style="background:rgba(100,116,139,0.15);color:#64748b;'
-                f'padding:5px 12px;border-radius:4px;font-size:0.82rem;'
-                f'border-left:3px solid #64748b;margin-bottom:4px;">'
-                f'{_perm_msg}</div>',
-                unsafe_allow_html=True,
-            )
 
         # ── 간트 컨트롤 행 (Streamlit 네이티브) ──
         _render_gantt_ctrl_row(_ss)
@@ -1208,7 +1184,7 @@ def render():
                 _render_gantt_component(gantt_tasks, is_editable=effective_editable,
                                         current_user=current_user, height=1400,
                                         row_mode=row_mode,
-                                        show_hidden=_ss['proc2_gantt_hidden'],
+                                        show_hidden=False,
                                         col_width=_ss['proc2_gantt_col_width'],
                                         light_theme=_ss['proc2_gantt_light'],
                                         show_actuals=_ss['proc2_gantt_actuals'],
