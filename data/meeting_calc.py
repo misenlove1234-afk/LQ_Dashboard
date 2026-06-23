@@ -394,12 +394,8 @@ def _lower_non_upp(decks: list, current_idx: int) -> str | None:
 
 
 def _get_inspection_date(anc_row: dict) -> datetime.date | None:
-    """선각검사 완료일 반환 (실적 우선 → 계획)"""
-    for key in ("insp_actual", "insp_plan"):
-        d = _to_date(anc_row.get(key))
-        if d:
-            return d
-    return None
+    """선각검사 완료일 반환"""
+    return _to_date(anc_row.get("insp_date"))
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -413,10 +409,12 @@ def _load_anchor50(vessel_no: str) -> dict:
     for _, row in df.iterrows():
         dk = str(row["deck"]).strip()
         result[dk] = {
-            "mount_start":   _to_date(row.get("mount_start_date")),
-            "insp_plan":     _to_date(row.get("inspection_plan")),
-            "insp_actual":   _to_date(row.get("inspection_actual")),
-            "wall_straight": _to_date(row.get("wall_straight_date")),
+            "mount_start":    _to_date(row.get("mount_start_date")),
+            "attach_end":     _to_date(row.get("sunggak_attach_end")),
+            "weld_end":       _to_date(row.get("sunggak_weld_end")),
+            "floor_straight": _to_date(row.get("floor_straight_date")),
+            "wall_straight":  _to_date(row.get("wall_straight_date")),
+            "insp_date":      _to_date(row.get("inspection_date")),
         }
     return result
 

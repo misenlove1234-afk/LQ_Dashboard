@@ -239,9 +239,13 @@ _ALTER_50STG_COLS = [
     "선각WALL곡직",
 ]
 
-# 기존 lq_meet_anchor_50stg에 wall_straight_date 컬럼 마이그레이션
+# 기존 lq_meet_anchor_50stg에 신규 컬럼 마이그레이션
 _ALTER_ANCHOR_50STG_COLS = [
-    ("wall_straight_date", "DATE"),
+    ("wall_straight_date",  "DATE"),
+    ("sunggak_attach_end",  "DATE"),
+    ("sunggak_weld_end",    "DATE"),
+    ("floor_straight_date", "DATE"),
+    ("inspection_date",     "DATE"),
 ]
 
 _DDL_INOUT = """
@@ -351,15 +355,16 @@ CREATE TABLE lq_meet_anchor_30stg (
 _DDL_ANCHOR_50STG = """
 IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='lq_meet_anchor_50stg' AND xtype='U')
 CREATE TABLE lq_meet_anchor_50stg (
-    id                       INT IDENTITY(1,1) PRIMARY KEY,
-    vessel_no                NVARCHAR(20)   NOT NULL,
-    deck                     NVARCHAR(20)   NOT NULL,
-    mount_start_date         DATE,
-    inspection_plan          DATE,
-    inspection_actual        DATE,
-    inspection_delay_reason  NVARCHAR(200),
-    wall_straight_date       DATE,
-    updated_at               DATETIME       DEFAULT GETDATE(),
+    id                  INT IDENTITY(1,1) PRIMARY KEY,
+    vessel_no           NVARCHAR(20)   NOT NULL,
+    deck                NVARCHAR(20)   NOT NULL,
+    mount_start_date    DATE,
+    sunggak_attach_end  DATE,
+    sunggak_weld_end    DATE,
+    floor_straight_date DATE,
+    wall_straight_date  DATE,
+    inspection_date     DATE,
+    updated_at          DATETIME       DEFAULT GETDATE(),
     CONSTRAINT uq_anchor50 UNIQUE (vessel_no, deck)
 )
 """
@@ -783,12 +788,13 @@ def default_rules_df() -> pd.DataFrame:
 # 앵커 이벤트 Excel 양식 생성
 # ═══════════════════════════════════════════════════════════════
 
-def generate_anchor_template() -> bytes:
-    """앵커 이벤트 입력용 Excel 양식 바이트 반환 (openpyxl)"""
+def generate_anchor_template(vessel_type: str = "LNG") -> bytes:
+    """앵커 이벤트 입력용 Excel 양식 바이트 반환 (openpyxl)
+    vessel_type: "LNG" 또는 "CONT" — 해당 선종의 블럭/데크를 미리 채워 반환
+    """
     try:
         from openpyxl import Workbook
-        from openpyxl.styles import (PatternFill, Font, Alignment,
-                                      Border, Side, numbers)
+        from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
         from openpyxl.utils import get_column_letter
     except ImportError:
         logger.error("openpyxl 미설치")
@@ -797,101 +803,114 @@ def generate_anchor_template() -> bytes:
     wb = Workbook()
 
     # ── 공통 스타일 ──────────────────────────────────────────
-    HDR_FILL  = PatternFill("solid", fgColor="1F4E79")
-    HDR_FONT  = Font(name="맑은 고딕", bold=True, color="FFFFFF", size=10)
-    BODY_FONT = Font(name="맑은 고딕", size=10)
-    CENTER    = Alignment(horizontal="center", vertical="center")
-    THIN      = Side(style="thin", color="AAAAAA")
-    BORDER    = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
-    DATE_FMT  = "YYYY-MM-DD"
-    EXAMPLE_FILL = PatternFill("solid", fgColor="FFF2CC")
+    HDR_FILL     = PatternFill("solid", fgColor="1F4E79")
+    HDR_FONT     = Font(name="맑은 고딕", bold=True, color="FFFFFF", size=10)
+    BODY_FONT    = Font(name="맑은 고딕", size=10)
+    CENTER       = Alignment(horizontal="center", vertical="center")
+    THIN         = Side(style="thin", color="AAAAAA")
+    BORDER       = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
+    DATE_FMT     = "YYYY-MM-DD"
+    PREFILL_FILL = PatternFill("solid", fgColor="DEEAF1")  # 연파랑 — 미리채운 셀
 
-    def _write_header(ws, headers: list, col_widths: list):
+    def _write_header(ws, headers, col_widths):
         for ci, (h, w) in enumerate(zip(headers, col_widths), 1):
             cell = ws.cell(row=1, column=ci, value=h)
-            cell.fill      = HDR_FILL
-            cell.font      = HDR_FONT
-            cell.alignment = CENTER
-            cell.border    = BORDER
+            cell.fill = HDR_FILL; cell.font = HDR_FONT
+            cell.alignment = CENTER; cell.border = BORDER
             ws.column_dimensions[get_column_letter(ci)].width = w
         ws.row_dimensions[1].height = 22
 
-    def _write_example(ws, values: list, row=2):
-        for ci, v in enumerate(values, 1):
-            cell = ws.cell(row=row, column=ci, value=v)
-            cell.fill      = EXAMPLE_FILL
-            cell.font      = BODY_FONT
-            cell.alignment = CENTER
-            cell.border    = BORDER
-            if isinstance(v, datetime.date):
-                cell.number_format = DATE_FMT
+    def _set_cell(ws, r, c, value, fill=None, date_fmt=False):
+        cell = ws.cell(row=r, column=c, value=value)
+        cell.font = BODY_FONT; cell.alignment = CENTER; cell.border = BORDER
+        if fill:
+            cell.fill = fill
+        if date_fmt:
+            cell.number_format = DATE_FMT
 
-    def _add_blank_rows(ws, start_row: int, n: int, n_cols: int, date_cols: list = None):
-        for r in range(start_row, start_row + n):
-            for c in range(1, n_cols + 1):
-                cell = ws.cell(row=r, column=c, value="")
-                cell.font      = BODY_FONT
-                cell.alignment = CENTER
-                cell.border    = BORDER
-                if date_cols and c in date_cols:
-                    cell.number_format = DATE_FMT
+    def _blank_date(ws, r, c):
+        cell = ws.cell(row=r, column=c, value="")
+        cell.font = BODY_FONT; cell.alignment = CENTER; cell.border = BORDER
+        cell.number_format = DATE_FMT
+
+    # ── 블럭/데크 목록 (선종 기준, 데크 순서대로) ────────────
+    dk_order = {r[1]: r[2] for r in _INIT_DECK_ORDER if r[0] == vessel_type}
+    blocks_sorted = sorted(
+        [(r[1], r[2]) for r in _INIT_BLOCK_DECK_MAP if r[0] == vessel_type],
+        key=lambda x: (dk_order.get(x[1], 99), x[0])
+    )
+    decks_sorted = sorted(
+        [r[1] for r in _INIT_DECK_ORDER if r[0] == vessel_type],
+        key=lambda d: dk_order.get(d, 99)
+    )
 
     # ── Sheet 1: 호선정보 ─────────────────────────────────────
     ws1 = wb.active
     ws1.title = "호선정보"
     ws1.freeze_panes = "A2"
-    headers1 = ["호선번호", "선종(LNG/CONT)", "거주구탑재예정일", "비고"]
-    widths1  = [14, 16, 20, 30]
-    _write_header(ws1, headers1, widths1)
-    _write_example(ws1, ["1234", "LNG", datetime.date(2026, 5, 1), "예시 행 — 삭제 후 입력"])
-    _add_blank_rows(ws1, 3, 20, len(headers1), date_cols=[3])
-    ws1["A1"].comment = None
+    _write_header(ws1,
+                  ["호선번호", "선종(LNG/CONT)", "거주구탑재예정일", "비고"],
+                  [14, 16, 20, 30])
+    for r in range(2, 22):
+        _set_cell(ws1, r, 1, "")
+        _set_cell(ws1, r, 2, vessel_type, fill=PREFILL_FILL)
+        _blank_date(ws1, r, 3)
+        _set_cell(ws1, r, 4, "")
 
     # ── Sheet 2: 30STG_앵커 ──────────────────────────────────
     ws2 = wb.create_sheet("30STG_앵커")
-    ws2.freeze_panes = "A2"
-    headers2 = ["호선번호", "선종(LNG/CONT)", "블럭번호", "블럭입고일", "블럭탑재일"]
-    widths2  = [14, 16, 14, 16, 16]
-    _write_header(ws2, headers2, widths2)
-    _write_example(ws2, ["1234", "LNG", "M110P",
-                          datetime.date(2026, 1, 15), datetime.date(2026, 2, 10)])
-    _add_blank_rows(ws2, 3, 50, len(headers2), date_cols=[4, 5])
+    ws2.freeze_panes = "D2"
+    _write_header(ws2,
+                  ["호선번호", "선종(LNG/CONT)", "블럭번호", "블럭입고일", "블럭탑재일"],
+                  [14, 16, 14, 16, 16])
+    for ri, (blk, _dk) in enumerate(blocks_sorted, 2):
+        _set_cell(ws2, ri, 1, "")
+        _set_cell(ws2, ri, 2, vessel_type, fill=PREFILL_FILL)
+        _set_cell(ws2, ri, 3, blk,         fill=PREFILL_FILL)
+        _blank_date(ws2, ri, 4)
+        _blank_date(ws2, ri, 5)
 
     # ── Sheet 3: 50STG_앵커 ──────────────────────────────────
     ws3 = wb.create_sheet("50STG_앵커")
-    ws3.freeze_panes = "A2"
-    headers3 = ["호선번호", "선종(LNG/CONT)", "데크",
-                "탑재시작일(마지막블럭탑재)",
-                "선각검사_계획", "선각검사_실적", "선각검사_지연사유",
-                "선각WALL곡직완료일"]
-    widths3  = [14, 16, 12, 24, 18, 18, 30, 20]
-    _write_header(ws3, headers3, widths3)
-    _write_example(ws3, ["1234", "LNG", "A-DK",
-                          datetime.date(2026, 1, 20),
-                          datetime.date(2026, 2, 5), "", "",
-                          datetime.date(2026, 2, 20)])
-    _add_blank_rows(ws3, 3, 50, len(headers3), date_cols=[4, 5, 6, 8])
+    ws3.freeze_panes = "D2"
+    _write_header(ws3,
+                  ["호선번호", "선종(LNG/CONT)", "데크",
+                   "탑재시작일",
+                   "선각취부 완료일", "선각용접 완료일",
+                   "FLOOR곡직 완료일", "WALL곡직 완료일",
+                   "선각검사 완료일"],
+                  [14, 16, 12, 16, 16, 16, 16, 16, 16])
+    for ri, dk in enumerate(decks_sorted, 2):
+        _set_cell(ws3, ri, 1, "")
+        _set_cell(ws3, ri, 2, vessel_type, fill=PREFILL_FILL)
+        _set_cell(ws3, ri, 3, dk,          fill=PREFILL_FILL)
+        for c in range(4, 10):
+            _blank_date(ws3, ri, c)
 
     # ── 안내 시트 ─────────────────────────────────────────────
     ws_guide = wb.create_sheet("입력안내", 0)
     guide_rows = [
         ["", ""],
-        ["  엑셀 회의록 대체 — 앵커 이벤트 입력 양식", ""],
+        [f"  엑셀 회의록 대체 — 앵커 이벤트 입력 양식 ({vessel_type})", ""],
         ["", ""],
-        ["  시트명",        "내용"],
-        ["  호선정보",      "진행 중인 호선 목록 및 거주구탑재 예정일"],
-        ["  30STG_앵커",    "단블럭별 입고일·탑재일 (30 STG 공정 계산 기준점)"],
-        ["  50STG_앵커",    "데크별 탑재시작일·선각검사일·WALL곡직완료일 (50 STG 공정 계산 기준점)"],
+        ["  시트명",          "내용"],
+        ["  호선정보",        "진행 중인 호선 목록 및 거주구탑재 예정일"],
+        ["  30STG_앵커",      f"블럭별 입고일·탑재일 ({vessel_type} · {len(blocks_sorted)}개 블럭 미리 채워짐)"],
+        ["  50STG_앵커",      f"데크별 선각공정 완료일 ({vessel_type} · {len(decks_sorted)}개 데크 미리 채워짐)"],
         ["", ""],
-        ["  공통 주의사항", ""],
+        ["  공통 주의사항",   ""],
         ["  ·", "날짜 형식: YYYY-MM-DD (예: 2026-01-15)"],
         ["  ·", "선종: LNG 또는 CONT 정확히 입력"],
-        ["  ·", "노란 예시 행은 삭제 후 실 데이터 입력"],
+        ["  ·", "연파랑 셀(블럭번호·데크·선종)은 미리 채워진 값 — 수정 금지"],
         ["  ·", "업로드 후 기존 동일 키(호선+블럭/데크)는 덮어씀"],
         ["", ""],
-        ["  데크 목록",     ""],
-        ["  LNG",           "UPP-DK / A-DK / B-DK / C-DK / D-DK / NAV-DK"],
-        ["  CONT",          "UPP-DK / A-DK / B-DK / C-DK / D-DK / E-DK / F-DK / NAV-DK"],
+        ["  50STG 앵커 컬럼 설명", ""],
+        ["  탑재시작일",       "마지막 블럭 탑재 시작일"],
+        ["  선각취부 완료일",  "선각취부 작업 완료일"],
+        ["  선각용접 완료일",  "선각용접 작업 완료일"],
+        ["  FLOOR곡직 완료일", "선각 FLOOR 곡직 완료일"],
+        ["  WALL곡직 완료일",  "선각 WALL 곡직 완료일 (트렁크배선 시작 트리거)"],
+        ["  선각검사 완료일",  "선각검사 완료일 (50STG 의장공정 시작 기준점)"],
     ]
     for r_idx, (a, b) in enumerate(guide_rows, 1):
         ca = ws_guide.cell(row=r_idx, column=1, value=a)
@@ -933,8 +952,9 @@ def get_anchor_30stg(vessel_no: str = None) -> pd.DataFrame:
 
 @st.cache_data(ttl=60)
 def get_anchor_50stg(vessel_no: str = None) -> pd.DataFrame:
-    sql = """SELECT vessel_no,deck,mount_start_date,inspection_plan,
-                    inspection_actual,inspection_delay_reason,wall_straight_date
+    sql = """SELECT vessel_no,deck,mount_start_date,
+                    sunggak_attach_end,sunggak_weld_end,
+                    floor_straight_date,wall_straight_date,inspection_date
              FROM lq_meet_anchor_50stg"""
     if vessel_no:
         return run_query(sql + " WHERE vessel_no=? ORDER BY deck", params=(vessel_no,))
@@ -1035,29 +1055,32 @@ def upload_anchor_excel(file_bytes: bytes) -> dict:
         conn = get_connection()
         cur  = conn.cursor()
         for row in ws.iter_rows(min_row=2, values_only=True):
-            vals = (list(row) + [None] * 8)[:8]
-            vessel_no, _, deck, mount_start, insp_plan, insp_actual, delay_reason, wall_straight = vals
+            vals = (list(row) + [None] * 9)[:9]
+            vessel_no, _, deck, mount_start, attach_end, weld_end, floor_end, wall_end, insp_end = vals
             if not vessel_no or not deck:
                 continue
             vno  = str(vessel_no).strip()
             deck = str(deck).strip()
-            d_mount   = _to_date_str(mount_start)
-            d_plan    = _to_date_str(insp_plan)
-            d_actual  = _to_date_str(insp_actual)
-            d_wall    = _to_date_str(wall_straight)
+            d_mount  = _to_date_str(mount_start)
+            d_attach = _to_date_str(attach_end)
+            d_weld   = _to_date_str(weld_end)
+            d_floor  = _to_date_str(floor_end)
+            d_wall   = _to_date_str(wall_end)
+            d_insp   = _to_date_str(insp_end)
             cur.execute("""
                 IF EXISTS (SELECT 1 FROM lq_meet_anchor_50stg WHERE vessel_no=? AND deck=?)
                     UPDATE lq_meet_anchor_50stg
-                    SET mount_start_date=?,inspection_plan=?,inspection_actual=?,
-                        inspection_delay_reason=?,wall_straight_date=?,updated_at=GETDATE()
+                    SET mount_start_date=?,sunggak_attach_end=?,sunggak_weld_end=?,
+                        floor_straight_date=?,wall_straight_date=?,inspection_date=?,
+                        updated_at=GETDATE()
                     WHERE vessel_no=? AND deck=?
                 ELSE
                     INSERT INTO lq_meet_anchor_50stg
-                      (vessel_no,deck,mount_start_date,inspection_plan,
-                       inspection_actual,inspection_delay_reason,wall_straight_date)
-                    VALUES (?,?,?,?,?,?,?)
-            """, (vno, deck, d_mount, d_plan, d_actual, delay_reason, d_wall, vno, deck,
-                  vno, deck, d_mount, d_plan, d_actual, delay_reason, d_wall))
+                      (vessel_no,deck,mount_start_date,sunggak_attach_end,sunggak_weld_end,
+                       floor_straight_date,wall_straight_date,inspection_date)
+                    VALUES (?,?,?,?,?,?,?,?)
+            """, (vno, deck, d_mount, d_attach, d_weld, d_floor, d_wall, d_insp, vno, deck,
+                  vno, deck, d_mount, d_attach, d_weld, d_floor, d_wall, d_insp))
             result["anchor50"] += 1
         conn.commit()
         conn.close()

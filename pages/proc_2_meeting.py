@@ -179,7 +179,7 @@ def _make_50stg_table(vessel_no: str, vessel_type: str, sched_df: pd.DataFrame) 
     if not anc50.empty:
         for _, r in anc50.iterrows():
             anc_map[str(r["deck"])] = {
-                "insp": _safe_date(r.get("inspection_actual")) or _safe_date(r.get("inspection_plan")),
+                "insp": _safe_date(r.get("inspection_date")),
             }
 
     headers = ["데크", "선각검사"] + _50STG_CODES
@@ -302,7 +302,7 @@ def render_meeting_tab(current_user: str = "", is_admin: bool = False):
         anc50 = get_anchor_50stg(vessel_no)
         n_in   = int(anc30["blk_in_date"].notna().sum())   if not anc30.empty else 0
         n_out  = int(anc30["blk_out_date"].notna().sum())  if not anc30.empty else 0
-        n_insp = int(anc50["inspection_plan"].notna().sum()) if not anc50.empty else 0
+        n_insp = int(anc50["inspection_date"].notna().sum()) if not anc50.empty else 0
         n_wall = int(anc50["wall_straight_date"].notna().sum()) if not anc50.empty else 0
     except Exception:
         anc30 = anc50 = pd.DataFrame()
@@ -311,7 +311,7 @@ def render_meeting_tab(current_user: str = "", is_admin: bool = False):
     mc = st.columns(4)
     mc[0].metric("블럭입고 입력", f"{n_in}건")
     mc[1].metric("블럭탑재 입력", f"{n_out}건")
-    mc[2].metric("선각검사 계획", f"{n_insp}건")
+    mc[2].metric("선각검사 완료", f"{n_insp}건")
     mc[3].metric("WALL곡직 입력", f"{n_wall}건")
 
     # ── 원클릭 계산 실행 ─────────────────────────────

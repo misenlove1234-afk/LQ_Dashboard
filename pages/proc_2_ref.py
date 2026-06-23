@@ -26,14 +26,14 @@ from data.meeting_ref_data import (
 logger = logging.getLogger(__name__)
 
 _SUBTABS = [
-    "30 STG 소요일",
-    "50 STG 소요일",
-    "In/Outside 소요일",
-    "공종 순서",
-    "데크 순서",
-    "비작업일 캘린더",
-    "로직 규칙",
-    "앵커 양식 다운로드",
+    "📦 30 STG 소요일",
+    "🏗️ 50 STG 소요일",
+    "🔌 In/Outside 소요일",
+    "🔢 공종 순서",
+    "📐 데크 순서",
+    "📅 비작업일 캘린더",
+    "📋 로직 규칙",
+    "📥 앵커 양식 다운로드",
 ]
 
 
@@ -311,19 +311,26 @@ def _tab_rules():
 def _tab_anchor_template():
     st.markdown("#### 앵커 이벤트 양식 — 다운로드 · 업로드")
     st.markdown(
-        "매주 변경되는 **블럭입고일 · 블럭탑재일 · 선각검사일 · 거주구탑재일**을 "
-        "이 양식에 입력하여 업로드하면 DB에 반영됩니다."
+        "선종을 선택하면 해당 선종의 블럭번호·데크가 미리 채워진 양식을 다운로드합니다. "
+        "작성 후 업로드하면 DB에 반영됩니다."
     )
 
-    # ── 양식 다운로드 ────────────────────────────────────────────
+    # ── 선종 선택 + 양식 다운로드 ────────────────────────────────
+    vtype_dl = st.radio(
+        "선종 선택",
+        options=["LNG", "CONT"],
+        horizontal=True,
+        key="ref_anchor_vtype",
+    )
+
     col_dl, col_info = st.columns([1, 2])
     with col_dl:
         try:
-            xlsx_bytes = generate_anchor_template()
+            xlsx_bytes = generate_anchor_template(vtype_dl)
             st.download_button(
-                label="📥 양식 다운로드 (.xlsx)",
+                label=f"📥 {vtype_dl} 양식 다운로드 (.xlsx)",
                 data=xlsx_bytes,
-                file_name="앵커이벤트_입력양식.xlsx",
+                file_name=f"앵커이벤트_입력양식_{vtype_dl}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="primary",
             )
@@ -336,8 +343,8 @@ def _tab_anchor_template():
 |---|---|
 | 입력안내 | 작성 방법 안내 |
 | 호선정보 | 호선번호 · 선종 · 거주구탑재예정일 |
-| 30STG_앵커 | 블럭별 입고일 · 탑재일 |
-| 50STG_앵커 | 데크별 탑재시작일 · 선각검사 계획/실적 |
+| 30STG_앵커 | 블럭별 **입고일 · 탑재일** (블럭번호 미리 채워짐) |
+| 50STG_앵커 | 데크별 **탑재시작일 · 선각취부/용접/FLOOR/WALL곡직/검사 완료일** (데크 미리 채워짐) |
         """)
 
     st.markdown("---")
