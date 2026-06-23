@@ -19,6 +19,8 @@ from data.meeting_ref_data import (
     get_logic_rules, save_logic_rules, default_rules_df,
     get_calendar,    add_calendar_date, delete_calendar_date,
     generate_anchor_template,
+    get_vessels, get_anchor_30stg, get_anchor_50stg,
+    upload_anchor_excel,
 )
 
 logger = logging.getLogger(__name__)
@@ -307,14 +309,15 @@ def _tab_rules():
 # ═══════════════════════════════════════════════════════════════
 
 def _tab_anchor_template():
-    st.markdown("#### 앵커 이벤트 입력 양식")
+    st.markdown("#### 앵커 이벤트 양식 — 다운로드 · 업로드")
     st.markdown(
         "매주 변경되는 **블럭입고일 · 블럭탑재일 · 선각검사일 · 거주구탑재일**을 "
-        "이 양식에 입력하여 업로드하면 공정이 자동 계산됩니다."
+        "이 양식에 입력하여 업로드하면 DB에 반영됩니다."
     )
 
-    col1, col2 = st.columns([1, 2])
-    with col1:
+    # ── 양식 다운로드 ────────────────────────────────────────────
+    col_dl, col_info = st.columns([1, 2])
+    with col_dl:
         try:
             xlsx_bytes = generate_anchor_template()
             st.download_button(
@@ -327,8 +330,7 @@ def _tab_anchor_template():
         except Exception as e:
             logger.error("양식 생성 오류: %s\n%s", e, traceback.format_exc())
             st.error("오류가 발생했습니다. 관리자에게 문의해 주세요.")
-
-    with col2:
+    with col_info:
         st.markdown("""
 | 시트 | 입력 내용 |
 |---|---|
@@ -339,8 +341,53 @@ def _tab_anchor_template():
         """)
 
     st.markdown("---")
-    st.markdown("#### 업로드 (준비 중)")
-    st.info("엑셀 파일 업로드 및 DB 반영 기능은 다음 단계에서 구현됩니다.")
+
+    # ── 양식 업로드 ──────────────────────────────────────────────
+    st.markdown("#### 업로드 (작성 완료 파일)")
+    uploaded = st.file_uploader(
+        "작성된 양식 파일을 업로드하세요 (.xlsx)",
+        type=["xlsx"],
+        key="ref_anchor_upload",
+    )
+
+    if uploaded:
+        st.caption(f"파일명: `{uploaded.name}` · {uploaded.size:,} bytes")
+        if st.button("DB에 반영", key="ref_anchor_upload_btn", type="primary"):
+            with st.spinner("업로드 중…"):
+                try:
+                    res = upload_anchor_excel(uploaded.read())
+                    if res["errors"]:
+                        for err in res["errors"]:
+                            st.warning(err)
+                    st.success(
+                        f"완료 — 호선 {res['vessel']}건 · "
+                        f"30 STG {res['anchor30']}건 · "
+                        f"50 STG {res['anchor50']}건 저장"
+                    )
+                except Exception as e:
+                    logger.error("업로드 오류: %s\n%s", e, traceback.format_exc())
+                    st.error("오류가 발생했습니다. 관리자에게 문의해 주세요.")
+
+    st.markdown("---")
+
+    # ── 현재 저장된 앵커 데이터 조회 ────────────────────────────
+    with st.expander("현재 저장된 데이터 조회", expanded=False):
+        sub = st.radio("조회 대상", ["호선정보", "30 STG 앵커", "50 STG 앵커"],
+                       horizontal=True, key="ref_anchor_view_tab")
+        try:
+            if sub == "호선정보":
+                df = get_vessels()
+            elif sub == "30 STG 앵커":
+                df = get_anchor_30stg()
+            else:
+                df = get_anchor_50stg()
+
+            if df is None or df.empty:
+                st.info("저장된 데이터가 없습니다. 양식을 작성하여 업로드해 주세요.")
+            else:
+                st.dataframe(df, use_container_width=True, hide_index=True)
+        except Exception:
+            st.info("DB에 접근할 수 없습니다.")
 
 
 # ═══════════════════════════════════════════════════════════════

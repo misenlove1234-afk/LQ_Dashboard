@@ -285,6 +285,47 @@ CREATE TABLE lq_meet_calendar (
 )
 """
 
+# ── 앵커 이벤트 테이블 ─────────────────────────────────────────
+
+_DDL_VESSEL = """
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='lq_meet_vessel' AND xtype='U')
+CREATE TABLE lq_meet_vessel (
+    vessel_no        NVARCHAR(20)  NOT NULL PRIMARY KEY,
+    vessel_type      NVARCHAR(10)  NOT NULL,
+    거주구탑재예정일  DATE,
+    비고              NVARCHAR(200),
+    updated_at       DATETIME      DEFAULT GETDATE()
+)
+"""
+
+_DDL_ANCHOR_30STG = """
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='lq_meet_anchor_30stg' AND xtype='U')
+CREATE TABLE lq_meet_anchor_30stg (
+    id           INT IDENTITY(1,1) PRIMARY KEY,
+    vessel_no    NVARCHAR(20)  NOT NULL,
+    block_no     NVARCHAR(20)  NOT NULL,
+    blk_in_date  DATE,
+    blk_out_date DATE,
+    updated_at   DATETIME      DEFAULT GETDATE(),
+    CONSTRAINT uq_anchor30 UNIQUE (vessel_no, block_no)
+)
+"""
+
+_DDL_ANCHOR_50STG = """
+IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='lq_meet_anchor_50stg' AND xtype='U')
+CREATE TABLE lq_meet_anchor_50stg (
+    id                       INT IDENTITY(1,1) PRIMARY KEY,
+    vessel_no                NVARCHAR(20)   NOT NULL,
+    deck                     NVARCHAR(20)   NOT NULL,
+    mount_start_date         DATE,
+    inspection_plan          DATE,
+    inspection_actual        DATE,
+    inspection_delay_reason  NVARCHAR(200),
+    updated_at               DATETIME       DEFAULT GETDATE(),
+    CONSTRAINT uq_anchor50 UNIQUE (vessel_no, deck)
+)
+"""
+
 
 # ═══════════════════════════════════════════════════════════════
 # 테이블 초기화
@@ -298,7 +339,8 @@ def init_tables() -> bool:
 
         for ddl in [_DDL_30STG, _DDL_50STG, _DDL_INOUT,
                     _DDL_SEQUENCE, _DDL_DECK_ORDER,
-                    _DDL_RULES, _DDL_CALENDAR]:
+                    _DDL_RULES, _DDL_CALENDAR,
+                    _DDL_VESSEL, _DDL_ANCHOR_30STG, _DDL_ANCHOR_50STG]:
             cur.execute(ddl)
         conn.commit()
 
@@ -777,3 +819,156 @@ def generate_anchor_template() -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+# ═══════════════════════════════════════════════════════════════
+# 앵커 이벤트 조회
+# ═══════════════════════════════════════════════════════════════
+
+@st.cache_data(ttl=60)
+def get_vessels() -> pd.DataFrame:
+    return run_query(
+        "SELECT vessel_no,vessel_type,거주구탑재예정일,비고 FROM lq_meet_vessel ORDER BY vessel_no"
+    )
+
+
+@st.cache_data(ttl=60)
+def get_anchor_30stg(vessel_no: str = None) -> pd.DataFrame:
+    sql = "SELECT vessel_no,block_no,blk_in_date,blk_out_date FROM lq_meet_anchor_30stg"
+    if vessel_no:
+        return run_query(sql + " WHERE vessel_no=? ORDER BY block_no", params=(vessel_no,))
+    return run_query(sql + " ORDER BY vessel_no,block_no")
+
+
+@st.cache_data(ttl=60)
+def get_anchor_50stg(vessel_no: str = None) -> pd.DataFrame:
+    sql = """SELECT vessel_no,deck,mount_start_date,inspection_plan,
+                    inspection_actual,inspection_delay_reason
+             FROM lq_meet_anchor_50stg"""
+    if vessel_no:
+        return run_query(sql + " WHERE vessel_no=? ORDER BY deck", params=(vessel_no,))
+    return run_query(sql + " ORDER BY vessel_no,deck")
+
+
+# ═══════════════════════════════════════════════════════════════
+# 앵커 이벤트 Excel 업로드 → DB 저장
+# ═══════════════════════════════════════════════════════════════
+
+def _to_date_str(val) -> str | None:
+    """openpyxl 셀 값 → 'YYYY-MM-DD' 문자열"""
+    if val is None:
+        return None
+    if isinstance(val, (datetime.date, datetime.datetime)):
+        return str(val)[:10]
+    s = str(val).strip()
+    return None if s in ("", "None") else s
+
+
+def upload_anchor_excel(file_bytes: bytes) -> dict:
+    """앵커 이벤트 Excel 양식 파싱 후 DB Upsert
+    반환: {"vessel": int, "anchor30": int, "anchor50": int, "errors": list}
+    """
+    from openpyxl import load_workbook
+
+    result = {"vessel": 0, "anchor30": 0, "anchor50": 0, "errors": []}
+
+    try:
+        wb = load_workbook(io.BytesIO(file_bytes), data_only=True)
+    except Exception as e:
+        result["errors"].append(f"파일 읽기 오류: {e}")
+        return result
+
+    # ── Sheet: 호선정보 ────────────────────────────────────────
+    if "호선정보" in wb.sheetnames:
+        ws = wb["호선정보"]
+        conn = get_connection()
+        cur  = conn.cursor()
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            vals = (list(row) + [None] * 4)[:4]
+            vessel_no, vessel_type, 거주구일, 비고 = vals
+            if not vessel_no or str(vessel_no).strip() == "":
+                continue
+            vessel_no   = str(vessel_no).strip()
+            vessel_type = str(vessel_type).strip() if vessel_type else ""
+            if vessel_type not in ("LNG", "CONT"):
+                result["errors"].append(f"호선 {vessel_no}: 선종이 LNG/CONT가 아닙니다.")
+                continue
+            d = _to_date_str(거주구일)
+            cur.execute("""
+                IF EXISTS (SELECT 1 FROM lq_meet_vessel WHERE vessel_no=?)
+                    UPDATE lq_meet_vessel
+                    SET vessel_type=?,거주구탑재예정일=?,비고=?,updated_at=GETDATE()
+                    WHERE vessel_no=?
+                ELSE
+                    INSERT INTO lq_meet_vessel (vessel_no,vessel_type,거주구탑재예정일,비고)
+                    VALUES (?,?,?,?)
+            """, (vessel_no, vessel_type, d, 비고, vessel_no,
+                  vessel_no, vessel_type, d, 비고))
+            result["vessel"] += 1
+        conn.commit()
+        conn.close()
+        get_vessels.clear()
+
+    # ── Sheet: 30STG_앵커 ─────────────────────────────────────
+    if "30STG_앵커" in wb.sheetnames:
+        ws = wb["30STG_앵커"]
+        conn = get_connection()
+        cur  = conn.cursor()
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            vals = (list(row) + [None] * 5)[:5]
+            vessel_no, _, block_no, blk_in, blk_out = vals
+            if not vessel_no or not block_no:
+                continue
+            vno = str(vessel_no).strip()
+            bno = str(block_no).strip()
+            d_in  = _to_date_str(blk_in)
+            d_out = _to_date_str(blk_out)
+            cur.execute("""
+                IF EXISTS (SELECT 1 FROM lq_meet_anchor_30stg WHERE vessel_no=? AND block_no=?)
+                    UPDATE lq_meet_anchor_30stg
+                    SET blk_in_date=?,blk_out_date=?,updated_at=GETDATE()
+                    WHERE vessel_no=? AND block_no=?
+                ELSE
+                    INSERT INTO lq_meet_anchor_30stg (vessel_no,block_no,blk_in_date,blk_out_date)
+                    VALUES (?,?,?,?)
+            """, (vno, bno, d_in, d_out, vno, bno,
+                  vno, bno, d_in, d_out))
+            result["anchor30"] += 1
+        conn.commit()
+        conn.close()
+        get_anchor_30stg.clear()
+
+    # ── Sheet: 50STG_앵커 ─────────────────────────────────────
+    if "50STG_앵커" in wb.sheetnames:
+        ws = wb["50STG_앵커"]
+        conn = get_connection()
+        cur  = conn.cursor()
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            vals = (list(row) + [None] * 7)[:7]
+            vessel_no, _, deck, mount_start, insp_plan, insp_actual, delay_reason = vals
+            if not vessel_no or not deck:
+                continue
+            vno  = str(vessel_no).strip()
+            deck = str(deck).strip()
+            d_mount   = _to_date_str(mount_start)
+            d_plan    = _to_date_str(insp_plan)
+            d_actual  = _to_date_str(insp_actual)
+            cur.execute("""
+                IF EXISTS (SELECT 1 FROM lq_meet_anchor_50stg WHERE vessel_no=? AND deck=?)
+                    UPDATE lq_meet_anchor_50stg
+                    SET mount_start_date=?,inspection_plan=?,inspection_actual=?,
+                        inspection_delay_reason=?,updated_at=GETDATE()
+                    WHERE vessel_no=? AND deck=?
+                ELSE
+                    INSERT INTO lq_meet_anchor_50stg
+                      (vessel_no,deck,mount_start_date,inspection_plan,
+                       inspection_actual,inspection_delay_reason)
+                    VALUES (?,?,?,?,?,?)
+            """, (vno, deck, d_mount, d_plan, d_actual, delay_reason, vno, deck,
+                  vno, deck, d_mount, d_plan, d_actual, delay_reason))
+            result["anchor50"] += 1
+        conn.commit()
+        conn.close()
+        get_anchor_50stg.clear()
+
+    return result
