@@ -340,6 +340,194 @@ def _tab_rules():
 
 
 # ═══════════════════════════════════════════════════════════════
+# 붙여넣기 / CSV 업로드 입력
+# ═══════════════════════════════════════════════════════════════
+
+def _parse_tsv(text: str, n_cols: int) -> list[list[str]]:
+    """탭 구분 텍스트 → 행 리스트 (빈 행·헤더 제외)"""
+    rows = []
+    for line in text.splitlines():
+        cells = line.split("\t")
+        cells = [c.strip() for c in cells]
+        if not any(cells):
+            continue
+        # 첫 번째 행이 한글 헤더면 스킵
+        if cells[0] in ("호선번호", "vessel_no", "호선"):
+            continue
+        cells += [""] * n_cols
+        rows.append(cells[:n_cols])
+    return rows
+
+
+def _section_paste():
+    """Excel Ctrl+C → Ctrl+V 붙여넣기 일괄 저장"""
+    dtype = st.radio(
+        "데이터 종류",
+        ["🚢 호선정보", "📦 30STG 앵커", "🏗️ 50STG 앵커"],
+        horizontal=True, key="paste_dtype",
+    )
+
+    if dtype == "🚢 호선정보":
+        st.caption("엑셀에서 아래 순서로 셀을 복사 후 붙여넣기 하세요.")
+        st.code("호선번호 | 선종(LNG/CONT) | 거주구탑재예정일(YYYY-MM-DD) | 비고(선택)", language=None)
+        placeholder = "3001\tLNG\t2026-09-01\t\n3002\tCONT\t2026-10-15\t"
+    elif dtype == "📦 30STG 앵커":
+        st.caption("엑셀에서 아래 순서로 셀을 복사 후 붙여넣기 하세요.")
+        st.code("호선번호 | 블럭번호 | 입고일(YYYY-MM-DD) | 탑재일(YYYY-MM-DD)", language=None)
+        placeholder = "3001\tM31OS-B1\t2026-07-01\t2026-07-10\n3001\tM31OS-B2\t2026-07-05\t"
+    else:
+        st.caption("엑셀에서 아래 순서로 셀을 복사 후 붙여넣기 하세요. (취부·용접·곡직은 자동 계산)")
+        st.code("호선번호 | 선종(LNG/CONT) | 데크 | 블럭탑재종료일(YYYY-MM-DD) | 선각검사완료일(YYYY-MM-DD)", language=None)
+        placeholder = "3001\tLNG\tA-DK\t2026-08-01\t2026-09-15\n3001\tLNG\tB-DK\t2026-08-10\t"
+
+    # 저장 완료 메시지
+    msg = st.session_state.pop("_paste_msg", None)
+    if msg:
+        st.success(msg) if msg.startswith("✅") else st.error(msg)
+
+    text = st.text_area(
+        "여기에 붙여넣기 (Ctrl+V)",
+        height=180,
+        placeholder=placeholder,
+        key=f"paste_text_{dtype}",
+    )
+
+    if st.button("저장", key="paste_save_btn", type="primary"):
+        if not text.strip():
+            st.warning("텍스트를 붙여넣어 주세요.")
+            return
+        try:
+            if dtype == "🚢 호선정보":
+                rows = _parse_tsv(text, 4)
+                count = 0
+                for r in rows:
+                    vno, vtype, gdate, remark = r[0], r[1], r[2] or None, r[3] or None
+                    if not vno or not vtype:
+                        continue
+                    if save_vessel_direct(vno, vtype, gdate, remark):
+                        count += 1
+                st.session_state["_paste_msg"] = f"✅ 호선정보 {count}건 저장 완료."
+
+            elif dtype == "📦 30STG 앵커":
+                rows = _parse_tsv(text, 4)
+                # vessel_no 별로 그룹화
+                from collections import defaultdict
+                groups: dict = defaultdict(list)
+                for r in rows:
+                    vno, bno, d_in, d_out = r
+                    if not vno or not bno:
+                        continue
+                    groups[vno].append({"block_no": bno, "blk_in_date": d_in or None, "blk_out_date": d_out or None})
+                total = 0
+                for vno, rlist in groups.items():
+                    n = save_anchor_30stg_direct(vno, rlist)
+                    if n > 0:
+                        total += n
+                st.session_state["_paste_msg"] = f"✅ 30STG 앵커 {total}건 저장 완료."
+
+            else:
+                rows = _parse_tsv(text, 5)
+                from collections import defaultdict
+                groups: dict = defaultdict(list)
+                for r in rows:
+                    vno, vtype, dk, d_mount, d_insp = r
+                    if not vno or not vtype or not dk:
+                        continue
+                    groups[(vno, vtype)].append({"deck": dk, "mount_end": d_mount or None, "insp_end": d_insp or None})
+                total = 0
+                for (vno, vtype), rlist in groups.items():
+                    n = save_anchor_50stg_direct(vno, vtype, rlist)
+                    if n > 0:
+                        total += n
+                st.session_state["_paste_msg"] = f"✅ 50STG 앵커 {total}건 저장 완료 (취부·용접·곡직 자동 계산)."
+
+        except Exception as e:
+            logger.error("붙여넣기 저장 오류: %s\n%s", e, traceback.format_exc())
+            st.session_state["_paste_msg"] = "❌ 오류가 발생했습니다. 관리자에게 문의해 주세요."
+        st.rerun()
+
+
+def _section_csv():
+    """CSV 파일 업로드 입력 (DRM 없는 순수 텍스트)"""
+    dtype = st.radio(
+        "데이터 종류",
+        ["🚢 호선정보", "📦 30STG 앵커", "🏗️ 50STG 앵커"],
+        horizontal=True, key="csv_dtype",
+    )
+
+    if dtype == "🚢 호선정보":
+        st.caption("컬럼: vessel_no, vessel_type, 거주구탑재예정일, 비고 (헤더 행 포함)")
+    elif dtype == "📦 30STG 앵커":
+        st.caption("컬럼: vessel_no, block_no, blk_in_date, blk_out_date (헤더 행 포함)")
+    else:
+        st.caption("컬럼: vessel_no, vessel_type, deck, mount_end, insp_end (헤더 행 포함, 취부·용접·곡직 자동 계산)")
+
+    msg = st.session_state.pop("_csv_msg", None)
+    if msg:
+        st.success(msg) if msg.startswith("✅") else st.error(msg)
+
+    uploaded = st.file_uploader(
+        "CSV 파일 업로드 (.csv)",
+        type=["csv"],
+        key=f"ref_csv_upload_{dtype}",
+    )
+
+    if uploaded and st.button("DB에 반영", key="csv_save_btn", type="primary"):
+        try:
+            df = pd.read_csv(uploaded, dtype=str).fillna("")
+            df.columns = [c.strip() for c in df.columns]
+
+            if dtype == "🚢 호선정보":
+                col_map = {"vessel_no": ["vessel_no", "호선번호"], "vessel_type": ["vessel_type", "선종"],
+                           "거주구탑재예정일": ["거주구탑재예정일", "거주구탑재일"], "비고": ["비고", "remark"]}
+                def _gc(cmap):
+                    for c in cmap:
+                        if c in df.columns: return c
+                    return None
+                count = 0
+                for _, row in df.iterrows():
+                    vno   = row.get(_gc(col_map["vessel_no"]) or "", "").strip()
+                    vtype = row.get(_gc(col_map["vessel_type"]) or "", "").strip()
+                    gdate = row.get(_gc(col_map["거주구탑재예정일"]) or "", "").strip() or None
+                    rmk   = row.get(_gc(col_map["비고"]) or "", "").strip() or None
+                    if not vno or not vtype: continue
+                    if save_vessel_direct(vno, vtype, gdate, rmk): count += 1
+                st.session_state["_csv_msg"] = f"✅ 호선정보 {count}건 저장 완료."
+
+            elif dtype == "📦 30STG 앵커":
+                from collections import defaultdict
+                groups: dict = defaultdict(list)
+                for _, row in df.iterrows():
+                    vno = row.get("vessel_no", row.get("호선번호", "")).strip()
+                    bno = row.get("block_no",  row.get("블럭번호", "")).strip()
+                    d_in  = row.get("blk_in_date",  row.get("입고일", "")).strip() or None
+                    d_out = row.get("blk_out_date", row.get("탑재일", "")).strip() or None
+                    if vno and bno:
+                        groups[vno].append({"block_no": bno, "blk_in_date": d_in, "blk_out_date": d_out})
+                total = sum(max(save_anchor_30stg_direct(v, r), 0) for v, r in groups.items())
+                st.session_state["_csv_msg"] = f"✅ 30STG 앵커 {total}건 저장 완료."
+
+            else:
+                from collections import defaultdict
+                groups: dict = defaultdict(list)
+                for _, row in df.iterrows():
+                    vno   = row.get("vessel_no",   row.get("호선번호", "")).strip()
+                    vtype = row.get("vessel_type", row.get("선종", "")).strip()
+                    dk    = row.get("deck",        row.get("데크", "")).strip()
+                    d_m   = row.get("mount_end",   row.get("블럭탑재종료일", "")).strip() or None
+                    d_i   = row.get("insp_end",    row.get("선각검사완료일", "")).strip() or None
+                    if vno and vtype and dk:
+                        groups[(vno, vtype)].append({"deck": dk, "mount_end": d_m, "insp_end": d_i})
+                total = sum(max(save_anchor_50stg_direct(v, t, r), 0) for (v, t), r in groups.items())
+                st.session_state["_csv_msg"] = f"✅ 50STG 앵커 {total}건 저장 완료."
+
+        except Exception as e:
+            logger.error("CSV 저장 오류: %s\n%s", e, traceback.format_exc())
+            st.session_state["_csv_msg"] = "❌ 오류가 발생했습니다. 관리자에게 문의해 주세요."
+        st.rerun()
+
+
+# ═══════════════════════════════════════════════════════════════
 # 앵커 직접 입력 헬퍼
 # ═══════════════════════════════════════════════════════════════
 
@@ -575,49 +763,30 @@ def _tab_anchor_template():
 
     st.markdown("---")
 
-    # ── 양식 업로드 ──────────────────────────────────────────────
-    st.markdown("#### 업로드 (작성 완료 파일)")
-    uploaded = st.file_uploader(
-        "작성된 양식 파일을 업로드하세요 (.xlsx)",
-        type=["xlsx"],
-        key="ref_anchor_upload",
+    # ── 입력 방식 선택 ───────────────────────────────────────────
+    st.markdown("#### 데이터 입력")
+    input_mode = st.radio(
+        "입력 방식",
+        ["✏️ 직접 입력", "📋 붙여넣기 (Excel Ctrl+C→V)", "📤 CSV 파일 업로드"],
+        horizontal=True,
+        key="ref_anchor_input_mode",
     )
 
-    if uploaded:
-        st.caption(f"파일명: `{uploaded.name}` · {uploaded.size:,} bytes")
-        if st.button("DB에 반영", key="ref_anchor_upload_btn", type="primary"):
-            with st.spinner("업로드 중…"):
-                try:
-                    res = upload_anchor_excel(uploaded.read())
-                    if res["errors"]:
-                        for err in res["errors"]:
-                            st.warning(err)
-                    st.success(
-                        f"완료 — 호선 {res['vessel']}건 · "
-                        f"30 STG {res['anchor30']}건 · "
-                        f"50 STG {res['anchor50']}건 저장"
-                    )
-                except Exception as e:
-                    logger.error("업로드 오류: %s\n%s", e, traceback.format_exc())
-                    st.error("오류가 발생했습니다. 관리자에게 문의해 주세요.")
-
-    st.markdown("---")
-
-    # ── 직접 입력 ─────────────────────────────────────────────────
-    st.markdown("#### ✏️ 직접 입력 (Excel 없이 입력)")
-    st.caption("Excel 업로드 없이 직접 데이터를 입력·저장할 수 있습니다.")
-
-    direct_tab = st.radio(
-        "입력 대상", ["🚢 호선 등록", "📦 30STG 앵커", "🏗️ 50STG 앵커"],
-        horizontal=True, key="ref_anchor_direct_tab",
-    )
-
-    if direct_tab == "🚢 호선 등록":
-        _direct_vessel()
-    elif direct_tab == "📦 30STG 앵커":
-        _direct_30stg()
+    if input_mode == "📋 붙여넣기 (Excel Ctrl+C→V)":
+        _section_paste()
+    elif input_mode == "📤 CSV 파일 업로드":
+        _section_csv()
     else:
-        _direct_50stg()
+        direct_tab = st.radio(
+            "입력 대상", ["🚢 호선 등록", "📦 30STG 앵커", "🏗️ 50STG 앵커"],
+            horizontal=True, key="ref_anchor_direct_tab",
+        )
+        if direct_tab == "🚢 호선 등록":
+            _direct_vessel()
+        elif direct_tab == "📦 30STG 앵커":
+            _direct_30stg()
+        else:
+            _direct_50stg()
 
     st.markdown("---")
 
