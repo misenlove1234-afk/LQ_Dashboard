@@ -44,6 +44,11 @@ from data.proc_2_data import (
     add_new_task,
     generate_gantt_print_html,
     load_tapjae_dates,
+    # ★ 신규
+    add_memo, get_memos, delete_memo, get_memo_photo,
+    get_manager, save_manager,
+    get_project_date_range,
+    get_all_tapjae_status, set_tapjae_status,
 )
 from utils.access_log import get_client_user
 
@@ -158,17 +163,115 @@ def _draw_ship_layout(layout_list, delay_by_area, title, is_split=False):
 
 
 # ══════════════════════════════════════════════
+#  간트 컨트롤 행 — Streamlit 네이티브 버튼
+#  iframe 외부에 배치 → 라이트/다크 테마 영향 없음
+# ══════════════════════════════════════════════
+def _render_gantt_ctrl_row(ss: dict):
+    """간트 차트 위 컨트롤 버튼 — 카테고리별 그룹화"""
+    _LBL = '<span style="font-size:0.72rem;color:#94a3b8;">'
+
+    # ── 카테고리 레이블 행 ──
+    lc = st.columns([2.5, 2.6, 1.6, 1.5, 2.3])
+    lc[0].markdown(f'{_LBL}📋 표시 설정</span>', unsafe_allow_html=True)
+    lc[1].markdown(f'{_LBL}↔ 열 폭</span>',     unsafe_allow_html=True)
+    lc[2].markdown(f'{_LBL}🎨 테마</span>',      unsafe_allow_html=True)
+    lc[3].markdown(f'{_LBL}🔀 오버랩</span>',    unsafe_allow_html=True)
+    lc[4].markdown(f'{_LBL}📍 이동</span>',      unsafe_allow_html=True)
+
+    # ── 버튼 행 ──
+    bc = st.columns([1.25, 1.25, 0.86, 0.86, 0.88, 1.6, 1.5, 1.15, 1.15])
+
+    # [표시] 숨기기
+    with bc[0]:
+        h_on = ss.get('proc2_gantt_hidden', False)
+        if st.button("숨기기 OFF" if h_on else "숨기기 ON",
+                     key="proc2_btn_hidden", use_container_width=True,
+                     type="primary" if h_on else "secondary"):
+            ss['proc2_gantt_hidden'] = not h_on
+            st.rerun()
+    # [표시] 실적 보기
+    with bc[1]:
+        ac_on = ss.get('proc2_gantt_actuals', False)
+        if st.button("✅ 실적 ON" if ac_on else "📊 실적보기",
+                     key="proc2_btn_actuals", use_container_width=True,
+                     type="primary" if ac_on else "secondary"):
+            ss['proc2_gantt_actuals'] = not ac_on
+            st.rerun()
+
+    # [열 폭] 좁게 / 보통 / 넓게
+    with bc[2]:
+        w_on = ss.get('proc2_gantt_col_width', 24) == 16
+        if st.button("좁게" + (" ✓" if w_on else ""),
+                     key="proc2_btn_col_sm", use_container_width=True,
+                     type="primary" if w_on else "secondary"):
+            ss['proc2_gantt_col_width'] = 16
+            st.rerun()
+    with bc[3]:
+        w_on = ss.get('proc2_gantt_col_width', 24) == 24
+        if st.button("보통" + (" ✓" if w_on else ""),
+                     key="proc2_btn_col_md", use_container_width=True,
+                     type="primary" if w_on else "secondary"):
+            ss['proc2_gantt_col_width'] = 24
+            st.rerun()
+    with bc[4]:
+        w_on = ss.get('proc2_gantt_col_width', 24) == 36
+        if st.button("넓게" + (" ✓" if w_on else ""),
+                     key="proc2_btn_col_lg", use_container_width=True,
+                     type="primary" if w_on else "secondary"):
+            ss['proc2_gantt_col_width'] = 36
+            st.rerun()
+
+    # [테마] 라이트/다크
+    with bc[5]:
+        lt_on = ss.get('proc2_gantt_light', False)
+        if st.button("🌙 다크 모드" if lt_on else "☀ 라이트 모드",
+                     key="proc2_btn_theme", use_container_width=True,
+                     type="primary" if lt_on else "secondary"):
+            ss['proc2_gantt_light'] = not lt_on
+            st.rerun()
+
+    # [오버랩] 모드 전환 (lane: 레인 재배치 / cascade: 날짜 밀기)
+    with bc[6]:
+        _om = ss.get('proc2_overlap_mode', 'lane')
+        if st.button(
+            "→ 날짜 밀기" if _om == 'cascade' else "↕ 레인 재배치",
+            key="proc2_btn_overlap", use_container_width=True,
+            type="primary" if _om == 'cascade' else "secondary",
+            help="레인 재배치: 겹치는 작업을 아래 행으로 / 날짜 밀기: 이후 작업을 뒤로 밀기",
+        ):
+            ss['proc2_overlap_mode'] = 'lane' if _om == 'cascade' else 'cascade'
+            st.rerun()
+
+    # [이동] 1주 앞/뒤
+    with bc[7]:
+        if st.button("◀ 1주전", key="proc2_btn_prev", use_container_width=True):
+            ss['proc2_gantt_week_offset'] = ss.get('proc2_gantt_week_offset', 0) - 1
+            st.rerun()
+    with bc[8]:
+        if st.button("1주후 ▶", key="proc2_btn_next", use_container_width=True):
+            ss['proc2_gantt_week_offset'] = ss.get('proc2_gantt_week_offset', 0) + 1
+            st.rerun()
+
+
+# ══════════════════════════════════════════════
 #  ★ 간트 HTML 컴포넌트 렌더링 (신규)
 # ══════════════════════════════════════════════
 def _render_gantt_component(tasks: list, is_editable: bool = False,
                              current_user: str = "", height: int = 900,
                              row_mode: str = "area",
                              wrap_max_height: str = "520px",
-                             template: str = "gantt_editor.html"):
+                             template: str = "gantt_editor.html",
+                             show_hidden: bool = False,
+                             col_width: int = 24,
+                             light_theme: bool = False,
+                             show_actuals: bool = False,
+                             week_offset: int = 0,
+                             overlap_mode: str = "lane"):
     """간트 HTML 템플릿에 데이터를 주입해 컴포넌트로 렌더링
     row_mode: 'area' (구역별) | 'ship' (호선별)
     wrap_max_height: .gantt-wrap 영역 최대 높이 CSS 값 (기본 520px, 최대화 시 viewport 기준)
     template: 사용할 HTML 파일명 (기본 gantt_editor.html, 공정회의 모드는 gantt_meeting.html)
+    show_hidden/col_width/light_theme/show_actuals/week_offset: Streamlit 컨트롤 상태
     """
     html_path = Path(__file__).parent.parent / "assets" / template
     if not html_path.exists():
@@ -186,6 +289,12 @@ def _render_gantt_component(tasks: list, is_editable: bool = False,
         .replace('__IS_EDITABLE__',         'true' if is_editable else 'false')
         .replace('__CURRENT_USER__',        current_user)
         .replace('__ROW_MODE__',            row_mode)
+        .replace('__INIT_SHOW_HIDDEN__',    'true' if show_hidden else 'false')
+        .replace('__INIT_COL_WIDTH__',      str(col_width))
+        .replace('__INIT_LIGHT_THEME__',    'true' if light_theme else 'false')
+        .replace('__INIT_SHOW_ACTUALS__',   'true' if show_actuals else 'false')
+        .replace('__INIT_WEEK_OFFSET__',    str(week_offset))
+        .replace('__INIT_OVERLAP_MODE__',   overlap_mode)
     )
     # gantt-wrap 최대 높이 동적 치환 (템플릿 하드코딩 520px → 파라미터)
     if wrap_max_height != "520px":
@@ -196,7 +305,7 @@ def _render_gantt_component(tasks: list, is_editable: bool = False,
 # ══════════════════════════════════════════════
 #  탭 상수
 # ══════════════════════════════════════════════
-TAB_OPTIONS = ["종합 공정 현황", "구역별 상세 현황", "📋 공정회의 모드"]
+TAB_OPTIONS = ["종합 공정 현황", "구역별 상세 현황", "기준정보"]
 
 
 # ══════════════════════════════════════════════
@@ -518,6 +627,15 @@ def render():
     # 편집은 변경 계획 표시 중일 때만 허용 (저장 로직이 B 컬럼만 갱신하기 때문)
     effective_editable = is_editable and (gantt_basis == "변경 계획")
 
+    # ── 간트 컨트롤 세션 상태 초기화 ─────────────────
+    _ss = st.session_state
+    if 'proc2_gantt_hidden'      not in _ss: _ss['proc2_gantt_hidden']      = False
+    if 'proc2_gantt_col_width'   not in _ss: _ss['proc2_gantt_col_width']   = 24
+    if 'proc2_gantt_light'       not in _ss: _ss['proc2_gantt_light']       = False
+    if 'proc2_gantt_actuals'     not in _ss: _ss['proc2_gantt_actuals']     = False
+    if 'proc2_gantt_week_offset' not in _ss: _ss['proc2_gantt_week_offset'] = 0
+    if 'proc2_overlap_mode'      not in _ss: _ss['proc2_overlap_mode']      = 'lane'
+
     # ══════════════════════════════════════════════
     #  간트 최대화 모드 — 사이드바는 유지, 메인 영역만 풀 너비
     # ══════════════════════════════════════════════
@@ -558,6 +676,9 @@ def render():
                 st.session_state["proc2_tab_choice"] = TAB_OPTIONS[1]
                 st.rerun()
 
+        # ── 간트 컨트롤 행 (Streamlit 네이티브) ──
+        _render_gantt_ctrl_row(_ss)
+
         has_filter = bool(selected_projects) or bool(selected_gongjongs)
         if not has_filter:
             st.info("💡 사이드바에서 **호선** 또는 **공종**을 먼저 선택하세요.")
@@ -567,13 +688,16 @@ def render():
             if not gantt_tasks:
                 st.warning(f"⚠️ 선택한 조건에 해당하는 작업이 없습니다. ({gantt_basis} 기준 일자가 있는 행만 표시)")
             else:
-                # CSS가 iframe 높이를 viewport에 맞추므로 Python height는 fallback.
-                # wrap_max_height도 iframe 내부 viewport 기준 calc(100vh - 140px)로 확장
-                # (iframe 내 legend/status/padding ~130px 제외)
                 _render_gantt_component(gantt_tasks, is_editable=effective_editable,
                                         current_user=current_user, height=1200,
                                         row_mode=row_mode,
-                                        wrap_max_height="calc(100vh - 140px)")
+                                        wrap_max_height="calc(100vh - 140px)",
+                                        show_hidden=_ss['proc2_gantt_hidden'],
+                                        col_width=_ss['proc2_gantt_col_width'],
+                                        light_theme=_ss['proc2_gantt_light'],
+                                        show_actuals=_ss['proc2_gantt_actuals'],
+                                        week_offset=_ss['proc2_gantt_week_offset'],
+                                        overlap_mode=_ss.get('proc2_overlap_mode', 'lane'))
         return
 
     # ── 상단 정보 ──────────────────────────────────
@@ -887,47 +1011,209 @@ def render():
             gantt_df    = filtered_df
             gantt_label = "전체"
 
+        # ── ① 거주구 탑재완료 관리 ─────────────────────────
+        _all_projs_raw = sorted(filtered_df['프로젝트'].dropna().unique().tolist()) \
+                         if not filtered_df.empty else []
+
+        # 탑재완료 상태: 세션당 1회 DB 조회 후 session_state에서 관리
+        # (run_query 5분 캐시 우회 — 저장 즉시 드롭다운에 반영)
+        if 'proc2_tapjae_state' not in _ss:
+            _ss['proc2_tapjae_state'] = get_all_tapjae_status()
+        _tapjae_status: dict = _ss['proc2_tapjae_state']
+
+        with st.expander("🚢 거주구 탑재 완료 관리", expanded=False):
+            if _all_projs_raw:
+                st.caption("체크 후 **저장** 버튼을 누르면 드롭다운에서 즉시 제외됩니다.")
+                _tj_ncols = min(5, max(1, len(_all_projs_raw)))
+                _tj_cols  = st.columns(_tj_ncols)
+                for _tj_i, _tj_pj in enumerate(_all_projs_raw):
+                    with _tj_cols[_tj_i % _tj_ncols]:
+                        st.checkbox(
+                            _tj_pj,
+                            value=_tapjae_status.get(_tj_pj, False),
+                            key=f"proc2_tapjae_{_tj_pj}",
+                        )
+                if st.button("💾 탑재완료 저장", key="proc2_tapjae_save", type="primary"):
+                    _new_state = dict(_tapjae_status)
+                    _all_ok = True
+                    for _tj_pj in _all_projs_raw:
+                        _wval = bool(_ss.get(f"proc2_tapjae_{_tj_pj}",
+                                             _tapjae_status.get(_tj_pj, False)))
+                        _new_state[_tj_pj] = _wval
+                        if _wval != _tapjae_status.get(_tj_pj, False):
+                            if not set_tapjae_status(_tj_pj, _wval):
+                                _all_ok = False
+                    if _all_ok:
+                        _ss['proc2_tapjae_state'] = _new_state
+                        st.toast("✅ 저장했습니다.")
+                        st.rerun()
+                    else:
+                        st.error("저장 중 오류가 발생했습니다. 관리자에게 문의해 주세요.")
+            else:
+                st.caption("표시할 프로젝트가 없습니다.")
+
+        # ── ② 프로젝트 드롭다운 + 탐색 버튼 + 담당자 칸 ──────
+        # 사이드바 미선택 시에도 전체 프로젝트 목록 사용 (df_raw 기반)
+        _all_projs_in_gantt = sorted(
+            df_raw['프로젝트'].dropna().unique().tolist()
+        ) if not df_raw.empty else []
+        # 탑재완료 저장된 프로젝트 드롭다운 제외
+        _projs_active = [p for p in _all_projs_in_gantt if not _tapjae_status.get(p, False)]
+
+        # 사이드바 1개 선택 시 간트 드롭다운 자동 동기화
+        if len(selected_projects) == 1 and selected_projects[0] in _projs_active:
+            _sidebar_proj = selected_projects[0]
+            if _ss.get('proc2_gantt_proj') != _sidebar_proj:
+                _ss['proc2_gantt_proj'] = _sidebar_proj
+                _ps, _pe = get_project_date_range(filtered_df, _sidebar_proj)
+                _ss['proc2_gantt_proj_start'] = _ps
+                _ss['proc2_gantt_proj_end']   = _pe
+
+        def _nav_to_proj(pj: str):
+            _ss['proc2_gantt_proj'] = pj
+            _ps2, _pe2 = get_project_date_range(df_raw, pj)
+            _ss['proc2_gantt_proj_start'] = _ps2
+            _ss['proc2_gantt_proj_end']   = _pe2
+            st.rerun()
+
+        _curr_pj    = _ss.get('proc2_gantt_proj', "(전체)")
+        _curr_pi    = _projs_active.index(_curr_pj) if _curr_pj in _projs_active else -1
+
+        col_prev, col_pj, col_next, col_mgr_lbl, col_mgr_val, col_mgr_btn = \
+            st.columns([0.35, 2.2, 0.35, 0.55, 1.7, 0.75])
+
+        with col_prev:
+            if st.button("◀", key="proc2_btn_proj_prev", use_container_width=True,
+                         help="이전 프로젝트") and _projs_active:
+                _prev_i = (_curr_pi - 1) % len(_projs_active)
+                _nav_to_proj(_projs_active[_prev_i])
+        with col_next:
+            if st.button("▶", key="proc2_btn_proj_next", use_container_width=True,
+                         help="다음 프로젝트") and _projs_active:
+                _next_i = (_curr_pi + 1) % len(_projs_active)
+                _nav_to_proj(_projs_active[_next_i])
+
+        with col_pj:
+            _gantt_proj_opts = ["(전체)"] + _projs_active
+            _gantt_proj_prev = _ss.get('proc2_gantt_proj', "(전체)")
+            _gantt_proj_idx  = _gantt_proj_opts.index(_gantt_proj_prev) \
+                               if _gantt_proj_prev in _gantt_proj_opts else 0
+            _gantt_proj = st.selectbox(
+                "프로젝트", _gantt_proj_opts,
+                index=_gantt_proj_idx, key="proc2_gantt_proj_sel",
+                label_visibility="collapsed",
+            )
+            if _gantt_proj != _ss.get('proc2_gantt_proj'):
+                _ss['proc2_gantt_proj'] = _gantt_proj
+                if _gantt_proj != "(전체)":
+                    _ps, _pe = get_project_date_range(df_raw, _gantt_proj)
+                    _ss['proc2_gantt_proj_start'] = _ps
+                    _ss['proc2_gantt_proj_end']   = _pe
+                else:
+                    _ss.pop('proc2_gantt_proj_start', None)
+                    _ss.pop('proc2_gantt_proj_end', None)
+                st.rerun()
+
+        # ③ 선택된 프로젝트의 기간 배지 표시
+        if _ss.get('proc2_gantt_proj_start') and _ss.get('proc2_gantt_proj_end'):
+            _ps_d = _ss['proc2_gantt_proj_start']
+            _pe_d = _ss['proc2_gantt_proj_end']
+            st.caption(f"📅 {_gantt_proj} 기간: **{_ps_d}** ~ **{_pe_d}**")
+
+        # ④ 담당자 칸
+        _sel_proj_for_mgr = _gantt_proj if _gantt_proj != "(전체)" else \
+                             (selected_projects[0] if len(selected_projects) == 1 else "")
+        with col_mgr_lbl:
+            st.markdown('<p style="margin:0;padding:6px 0 0 0;font-size:0.85rem;color:#94a3b8;">담당자</p>',
+                        unsafe_allow_html=True)
+        with col_mgr_val:
+            _mgr_default = get_manager(_sel_proj_for_mgr) if _sel_proj_for_mgr else ""
+            _mgr_input = st.text_input(
+                "담당자입력", value=_mgr_default,
+                key=f"proc2_mgr_input_{_sel_proj_for_mgr or 'all'}",
+                placeholder="담당자 이름",
+                label_visibility="collapsed",
+            )
+        with col_mgr_btn:
+            if st.button("저장", key="proc2_mgr_save", use_container_width=True):
+                if _sel_proj_for_mgr and _mgr_input.strip():
+                    try:
+                        save_manager(_sel_proj_for_mgr, _mgr_input.strip())
+                        st.toast("✅ 담당자가 저장되었습니다.")
+                    except Exception:
+                        logger.error("담당자 저장 실패", exc_info=True)
+                        st.error("저장 중 오류가 발생했습니다.")
+                else:
+                    st.warning("프로젝트와 담당자를 입력해 주세요.")
+
+        # 프로젝트 필터 적용:
+        # 페이지 드롭다운 선택이 있으면 df_raw 기반으로 해당 프로젝트 데이터 사용
+        _page_proj = _ss.get('proc2_gantt_proj', "(전체)")
+        if _page_proj != "(전체)":
+            # 사이드바 필터와 무관하게 df_raw에서 해당 프로젝트만 추출
+            gantt_df = df_raw[df_raw['프로젝트'] == _page_proj].copy()
+            gantt_label = _page_proj
+        else:
+            # 기존 로직 유지 (사이드바 필터 적용된 gantt_df)
+            if _ss.get('proc2_gantt_proj', "(전체)") != "(전체)":
+                gantt_df = gantt_df[gantt_df['프로젝트'] == _page_proj]
+                gantt_label = _page_proj
+
         # row_mode: 공종만 필터(프로젝트·구역 미선택) → 호선별, 아니면 구역별
         row_mode = "ship" if (
             bool(selected_gongjongs)
             and not selected_projects
             and not selected_area_filter
+            and _page_proj == "(전체)"
         ) else "area"
 
-        perm_icon = "✅" if effective_editable else "🔒"
-        if effective_editable:
-            perm_text = "편집 가능"
-            perm_suffix = " — 막대를 드래그하여 일정 조정 후 저장하세요."
-        elif is_editable and gantt_basis != "변경 계획":
-            perm_text = f"읽기 전용 ({gantt_basis} 보기)"
-            perm_suffix = " — 편집은 사이드바 '차트 조회 기준'에서 **변경 계획**을 선택해야 활성화됩니다."
-        else:
-            perm_text = "읽기 전용 (편집 권한 없음)"
-            perm_suffix = " — 일정 변경이 필요하면 관리자에게 편집 권한을 요청하세요."
         mode_text = "호선별" if row_mode == "ship" else "구역별"
         col_gh, col_gb = st.columns([6, 1])
         with col_gh:
             st.markdown(f"##### 📅 공정 타임라인 — {gantt_label} ({mode_text} 뷰 · {gantt_basis})")
-            st.caption(
-                f"{perm_icon} **접속자:** `{current_user}` &nbsp;|&nbsp; {perm_text}"
-                + perm_suffix
-            )
+            st.caption(f"접속자: `{current_user}`")
         with col_gb:
             if st.button("⛶ 최대화", key="proc2_gantt_maximize", use_container_width=True):
                 st.session_state["proc2_gantt_maximized"] = True
                 st.rerun()
 
-        has_filter = bool(selected_projects) or bool(selected_gongjongs)
+        # Fix #2: 읽기 전용 안내 — 표 밖 고정 스타일 (테마 영향 없음)
+        if not effective_editable:
+            _perm_msg = (
+                "🔒 읽기 전용 — 일정 변경이 필요하면 관리자에게 편집 권한을 요청하세요."
+                if not is_editable else
+                f"🔒 읽기 전용 ({gantt_basis} 보기) — 편집하려면 사이드바 '차트 조회 기준'을 **변경 계획**으로 설정하세요."
+            )
+            st.markdown(
+                f'<div style="background:rgba(100,116,139,0.15);color:#64748b;'
+                f'padding:5px 12px;border-radius:4px;font-size:0.82rem;'
+                f'border-left:3px solid #64748b;margin-bottom:4px;">'
+                f'{_perm_msg}</div>',
+                unsafe_allow_html=True,
+            )
+
+        # ── 간트 컨트롤 행 (Streamlit 네이티브) ──
+        _render_gantt_ctrl_row(_ss)
+
+        # 페이지 드롭다운 또는 사이드바 필터 중 하나라도 있으면 간트 표시
+        has_filter = (bool(selected_projects) or bool(selected_gongjongs)
+                      or _page_proj != "(전체)")
         if not has_filter:
-            st.info("💡 사이드바에서 **호선** 또는 **공종**을 먼저 선택하세요.")
+            st.info("💡 위 드롭다운에서 **프로젝트**를 선택하거나, 사이드바에서 **호선/공종**을 선택하세요.")
         else:
             gantt_tasks = get_gantt_data(gantt_df, basis=gantt_basis)
             if not gantt_tasks:
                 st.warning(f"⚠️ 선택한 조건에 해당하는 작업이 없습니다. ({gantt_basis} 기준 일자가 있는 행만 표시)")
             else:
                 _render_gantt_component(gantt_tasks, is_editable=effective_editable,
-                                        current_user=current_user, height=700,
-                                        row_mode=row_mode)
+                                        current_user=current_user, height=1400,
+                                        row_mode=row_mode,
+                                        show_hidden=_ss['proc2_gantt_hidden'],
+                                        col_width=_ss['proc2_gantt_col_width'],
+                                        light_theme=_ss['proc2_gantt_light'],
+                                        show_actuals=_ss['proc2_gantt_actuals'],
+                                        week_offset=_ss['proc2_gantt_week_offset'],
+                                        overlap_mode=_ss.get('proc2_overlap_mode', 'lane'))
 
         st.markdown('<hr style="border-color:rgba(56,189,248,0.15);">', unsafe_allow_html=True)
         st.subheader("📋 구역별 상세 작업 현황")
@@ -1141,188 +1427,124 @@ def render():
                         st.warning("사용자ID와 이름을 모두 입력해주세요.")
                 st.caption(f"💡 현재 접속자 ID: `{current_user}` — 이 값을 사용자ID에 입력하면 현재 접속자에게 권한 부여")
 
+        # ══════════════════════════════════════════════
+        #  📝 공정 메모 섹션
+        # ══════════════════════════════════════════════
+        st.markdown('<hr style="border-color:rgba(56,189,248,0.15);">', unsafe_allow_html=True)
+        st.subheader("📝 공정 메모")
+
+        _memo_proj = _ss.get('proc2_gantt_proj', "(전체)")
+        _memo_proj_filter = None if _memo_proj == "(전체)" else _memo_proj
+
+        with st.expander("✏️ 새 메모 작성", expanded=False):
+            with st.form(key="proc2_memo_form", clear_on_submit=True):
+                fm1, fm2 = st.columns(2)
+                memo_org    = fm1.text_input(
+                    "조직", key="proc2_memo_org",
+                    placeholder="예: 선실공사팀"
+                )
+                memo_author = fm2.text_input(
+                    "작성자", value=current_user, key="proc2_memo_author"
+                )
+                memo_proj_input = st.text_input(
+                    "프로젝트 (선택)", value=_memo_proj_filter or "",
+                    key="proc2_memo_proj_input",
+                    placeholder="예: H1234"
+                )
+                memo_text = st.text_area(
+                    "메모 내용",
+                    key="proc2_memo_text",
+                    placeholder="공정회의 내용, 변경사항 등을 입력하세요.",
+                    height=120,
+                )
+                memo_photo = st.file_uploader(
+                    "사진 첨부 (선택)", type=["jpg", "jpeg", "png", "bmp"],
+                    key="proc2_memo_photo"
+                )
+                submitted_memo = st.form_submit_button("💾 저장", type="primary")
+                if submitted_memo:
+                    if not memo_org.strip():
+                        st.warning("조직을 입력해주세요.")
+                    elif not memo_author.strip():
+                        st.warning("작성자를 입력해주세요.")
+                    elif not memo_text.strip():
+                        st.warning("메모 내용을 입력해주세요.")
+                    else:
+                        _photo_bytes = memo_photo.read() if memo_photo else None
+                        _photo_name  = memo_photo.name  if memo_photo else None
+                        try:
+                            _ok_memo = add_memo(
+                                조직=memo_org.strip(),
+                                작성자=memo_author.strip(),
+                                메모=memo_text.strip(),
+                                사진_bytes=_photo_bytes,
+                                파일명=_photo_name,
+                                프로젝트=memo_proj_input.strip() or None,
+                            )
+                            if _ok_memo:
+                                st.success("✅ 메모가 저장되었습니다.")
+                                st.rerun()
+                            else:
+                                st.error("저장 중 오류가 발생했습니다. 관리자에게 문의해 주세요.")
+                        except Exception:
+                            logger.error("메모 저장 실패", exc_info=True)
+                            st.error("저장 중 오류가 발생했습니다.")
+
+        # 메모 목록
+        _memos_df = get_memos(프로젝트=_memo_proj_filter, limit=50)
+        if _memos_df is not None and not _memos_df.empty:
+            st.caption(
+                f"최근 메모 {len(_memos_df)}건" +
+                (f" — 프로젝트: **{_memo_proj_filter}**" if _memo_proj_filter else " (전체)")
+            )
+            for _, _mrow in _memos_df.iterrows():
+                _mid      = int(_mrow['메모ID'])
+                _mproj    = _mrow.get('프로젝트') or ""
+                _morg     = _mrow.get('조직', "")
+                _mauth    = _mrow.get('작성자', "")
+                _mdate    = _mrow.get('등록일시')
+                _mdate_s  = _mdate.strftime('%Y-%m-%d %H:%M') if pd.notnull(_mdate) else ""
+                _mtext    = _mrow.get('메모', "")
+                _mfile    = _mrow.get('파일명') or ""
+                with st.container():
+                    mc1, mc2 = st.columns([10, 1])
+                    with mc1:
+                        _proj_badge = f"`{_mproj}` &nbsp;" if _mproj else ""
+                        st.markdown(
+                            f"{_proj_badge}**{_morg}** · {_mauth}"
+                            f"&nbsp;&nbsp;<span style='color:#94a3b8;font-size:0.82rem;'>{_mdate_s}</span>",
+                            unsafe_allow_html=True,
+                        )
+                        st.write(_mtext)
+                        if _mfile:
+                            _pdata = get_memo_photo(_mid)
+                            if _pdata:
+                                with st.expander(f"📷 사진 보기 ({_mfile})"):
+                                    st.image(_pdata, use_container_width=True)
+                    with mc2:
+                        if st.button("🗑️", key=f"proc2_memo_del_{_mid}", help="이 메모 삭제"):
+                            try:
+                                delete_memo(_mid)
+                                st.rerun()
+                            except Exception:
+                                logger.error("메모 삭제 실패", exc_info=True)
+                                st.error("삭제 중 오류가 발생했습니다.")
+                    st.markdown(
+                        '<hr style="border-color:rgba(56,189,248,0.08);margin:4px 0;">',
+                        unsafe_allow_html=True,
+                    )
+        else:
+            st.caption("저장된 메모가 없습니다.")
+
     # ══════════════════════════════════════════════
-    #  Tab 3: 공정회의 모드
+    #  Tab 3: 기준정보 (관리자 전용 통합 포인트)
     # ══════════════════════════════════════════════
     elif tab_choice == tab_options[2]:
-        # 전체 너비 최적화 (사이드바 유지, 메인 풀 너비)
-        st.markdown("""
-        <style>
-        section[data-testid="stMain"] .block-container {
-            max-width: 100% !important;
-            padding-left: 0.8rem !important;
-            padding-right: 0.8rem !important;
-            padding-top: 0.4rem !important;
-            padding-bottom: 0.2rem !important;
-        }
-        section[data-testid="stMain"] iframe {
-            height: calc(100vh - 260px) !important;
-            min-height: 400px !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-
-        # ── 프로젝트 목록 ────────────────────────
-        mtg_projects = all_projects
-        if not mtg_projects:
-            st.warning("💡 사이드바에서 조회 기간을 설정하면 프로젝트가 표시됩니다.")
-            return
-
-        # 프로젝트 변경 시 STG 선택 초기화
-        if st.session_state.get("proc2_mtg_last_proj") != mtg_projects[
-            max(0, min(st.session_state.get("proc2_mtg_proj_idx", 0), len(mtg_projects) - 1))
-        ]:
-            st.session_state["proc2_mtg_stg_sel"] = None
-
-        # 현재 인덱스 (범위 보정)
-        cur_idx = max(0, min(
-            st.session_state.get("proc2_mtg_proj_idx", 0),
-            len(mtg_projects) - 1
-        ))
-
-        # ── 컨트롤 바 (프로젝트 네비게이터 + 기간 선택) ──────────
-        c_prev, c_sel, c_next, c_period = st.columns([1, 4, 1, 5])
-
-        with c_prev:
-            if st.button("◀ 이전", key="proc2_mtg_prev",
-                         use_container_width=True, disabled=(cur_idx == 0)):
-                st.session_state["proc2_mtg_proj_idx"] = cur_idx - 1
-                st.rerun()
-
-        def _on_mtg_proj_change():
-            val = st.session_state.get("proc2_mtg_proj_sel")
-            if val in mtg_projects:
-                st.session_state["proc2_mtg_proj_idx"] = mtg_projects.index(val)
-                st.session_state["proc2_mtg_stg_sel"] = None
-
-        with c_sel:
-            mtg_proj = st.selectbox(
-                "호선", mtg_projects, index=cur_idx,
-                key="proc2_mtg_proj_sel",
-                on_change=_on_mtg_proj_change,
-                label_visibility="collapsed",
-            )
-
-        with c_next:
-            if st.button("다음 ▶", key="proc2_mtg_next",
-                         use_container_width=True,
-                         disabled=(cur_idx >= len(mtg_projects) - 1)):
-                st.session_state["proc2_mtg_proj_idx"] = cur_idx + 1
-                st.rerun()
-
-        with c_period:
-            mtg_period = st.radio(
-                "기간", ["이번달", "+1개월", "+3개월", "전체기간"],
-                horizontal=True, index=1,
-                key="proc2_mtg_period",
-                label_visibility="collapsed",
-            )
-
-        # 현재 프로젝트 기록 (다음 렌더 시 변경 감지용)
-        st.session_state["proc2_mtg_last_proj"] = mtg_proj
-
-        # ── 기간 계산 ────────────────────────────
-        _today_d = datetime.now().date()
-        _ms = _today_d.replace(day=1)
-        if mtg_period == "이번달":
-            mtg_s = _ms
-            mtg_e = (_ms.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
-        elif mtg_period == "+1개월":
-            _e1 = (_ms.replace(day=28) + timedelta(days=4)).replace(day=1)
-            mtg_s = _ms
-            mtg_e = (_e1.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
-        elif mtg_period == "+3개월":
-            mtg_s = _ms
-            _e = _ms
-            for _ in range(3):
-                _e = (_e.replace(day=28) + timedelta(days=4)).replace(day=1)
-            mtg_e = _e - timedelta(days=1)
-        else:  # 전체기간
-            mtg_s = start_date
-            mtg_e = end_date
-
-        # ── 해당 호선 데이터 ─────────────────────
-        mtg_df = df_raw[df_raw['프로젝트'] == mtg_proj].copy()
-
-        # ── KPI 한 줄 요약 ───────────────────────
-        tw = mtg_df['점유율'].sum() if '점유율' in mtg_df.columns else 0
-        if tw > 0:
-            _plan_p = (mtg_df[mtg_df['변경_계획_B_완료'] <= today]['점유율'].sum() / tw) * 100
-            _act_p  = (mtg_df[mtg_df['실적_C_종료'].notna()]['점유율'].sum() / tw) * 100
+        st.markdown("##### 🗂️ 기준정보 관리")
+        if not st.session_state.get("is_admin"):
+            st.warning("⚠️ 관리자 권한이 필요합니다. 사이드바에서 관리자 비밀번호를 입력해 주세요.")
         else:
-            _plan_p = _act_p = 0.0
+            # TODO: 기준정보 브랜치 통합 시 여기에 컴포넌트 삽입
+            st.info("기준정보 관리 기능은 준비 중입니다. (별도 브랜치 통합 후 제공 예정)")
 
-        _delayed = (
-            mtg_df[(mtg_df['변경_계획_B_완료'] < today) & mtg_df['실적_C_종료'].isna()].shape[0]
-            if '변경_계획_B_완료' in mtg_df.columns else 0
-        )
-        _in_prog = (
-            mtg_df[mtg_df['실적_C_착수'].notna() & mtg_df['실적_C_종료'].isna()].shape[0]
-            if '실적_C_착수' in mtg_df.columns else 0
-        )
-        _proj_pos = f"{cur_idx + 1} / {len(mtg_projects)}"
-
-        kc = st.columns(6)
-        with kc[0]: st.metric("호선", f"{mtg_proj}  ({_proj_pos})")
-        with kc[1]: st.metric("변경 계획 진도율", f"{_plan_p:.1f}%")
-        with kc[2]:
-            delta_p = _act_p - _plan_p
-            st.metric("실적 진도율", f"{_act_p:.1f}%",
-                      f"{delta_p:+.1f}%",
-                      delta_color="normal" if delta_p >= 0 else "inverse")
-        with kc[3]: st.metric("진행 중", f"{_in_prog}건")
-        with kc[4]:
-            st.metric("지연", f"{_delayed}건",
-                      "이상 없음" if _delayed == 0 else f"{_delayed}건 지연",
-                      delta_color="normal" if _delayed == 0 else "inverse")
-        with kc[5]: st.metric("조회 기간", f"{mtg_s.strftime('%m/%d')} ~ {mtg_e.strftime('%m/%d')}")
-
-        # ── STG 빠른 선택 버튼 ───────────────────
-        stg_list_mtg = (sorted(mtg_df['STG'].astype(str).unique().tolist())
-                        if 'STG' in mtg_df.columns else [])
-        sel_stg_mtg = st.session_state.get("proc2_mtg_stg_sel")
-
-        if len(stg_list_mtg) > 1:
-            stg_btn_cols = st.columns(min(len(stg_list_mtg), 10))
-            for i, stg in enumerate(stg_list_mtg):
-                with stg_btn_cols[i % len(stg_btn_cols)]:
-                    active = (stg == sel_stg_mtg)
-                    lbl = f"✅ {stg}" if active else stg
-                    if st.button(lbl, key=f"proc2_mtg_stgbtn_{stg}",
-                                 use_container_width=True):
-                        st.session_state["proc2_mtg_stg_sel"] = None if active else stg
-                        st.rerun()
-            sel_stg_mtg = st.session_state.get("proc2_mtg_stg_sel")
-            if sel_stg_mtg and sel_stg_mtg in stg_list_mtg:
-                mtg_df = mtg_df[mtg_df['STG'].astype(str) == sel_stg_mtg]
-
-        # ── 기간 필터 (변경 계획 기준) ────────────
-        _mtg_s_ts = pd.Timestamp(mtg_s)
-        _mtg_e_ts = pd.Timestamp(mtg_e)
-        if mtg_period != "전체기간":
-            mtg_df = mtg_df[
-                mtg_df['변경_계획_B_착수'].notna() & mtg_df['변경_계획_B_완료'].notna() &
-                (mtg_df['변경_계획_B_착수'] <= _mtg_e_ts) &
-                (mtg_df['변경_계획_B_완료'] >= _mtg_s_ts)
-            ]
-
-        # 공종 필터 (사이드바 연동)
-        if selected_gongjongs:
-            mtg_df = mtg_df[mtg_df['공종'].isin(selected_gongjongs)]
-
-        # ── 간트 렌더링 ─────────────────────────
-        mtg_gantt_tasks = get_gantt_data(mtg_df, basis="변경 계획")
-        if not mtg_gantt_tasks:
-            st.warning(f"⚠️ [{mtg_proj}] 해당 기간에 변경 계획 일정이 있는 작업이 없습니다.")
-        else:
-            _render_gantt_component(
-                mtg_gantt_tasks,
-                is_editable=is_editable,
-                current_user=current_user,
-                height=900,
-                row_mode="area",
-                wrap_max_height="calc(100vh - 290px)",
-                template="gantt_meeting.html",
-            )
-        if is_editable:
-            st.caption("💡 막대 드래그 후 [💾 저장] → JSON 다운로드 → '구역별 상세 현황' 탭 하단 **변경 내역 DB 반영**에 업로드하세요.")
+    # ══════════════════════════════════════════════
