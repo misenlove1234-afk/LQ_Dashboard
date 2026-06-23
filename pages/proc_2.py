@@ -171,15 +171,14 @@ def _render_gantt_ctrl_row(ss: dict):
     _LBL = '<span style="font-size:0.72rem;color:#94a3b8;">'
 
     # ── 카테고리 레이블 행 ──
-    lc = st.columns([1.25, 2.6, 1.6, 1.5, 2.3])
+    lc = st.columns([1.25, 2.6, 1.5, 2.3])
     lc[0].markdown(f'{_LBL}📋 표시 설정</span>', unsafe_allow_html=True)
     lc[1].markdown(f'{_LBL}↔ 열 폭</span>',     unsafe_allow_html=True)
-    lc[2].markdown(f'{_LBL}🎨 테마</span>',      unsafe_allow_html=True)
-    lc[3].markdown(f'{_LBL}🔀 오버랩</span>',    unsafe_allow_html=True)
-    lc[4].markdown(f'{_LBL}📍 이동</span>',      unsafe_allow_html=True)
+    lc[2].markdown(f'{_LBL}🔀 오버랩</span>',    unsafe_allow_html=True)
+    lc[3].markdown(f'{_LBL}📍 이동</span>',      unsafe_allow_html=True)
 
     # ── 버튼 행 ──
-    bc = st.columns([1.25, 0.86, 0.86, 0.88, 1.6, 1.5, 1.15, 1.15])
+    bc = st.columns([1.25, 0.86, 0.86, 0.88, 1.5, 1.15, 1.15])
 
     # [표시] 실적 보기
     with bc[0]:
@@ -213,17 +212,8 @@ def _render_gantt_ctrl_row(ss: dict):
             ss['proc2_gantt_col_width'] = 36
             st.rerun()
 
-    # [테마] 라이트/다크
-    with bc[4]:
-        lt_on = ss.get('proc2_gantt_light', False)
-        if st.button("🌙 다크 모드" if lt_on else "☀ 라이트 모드",
-                     key="proc2_btn_theme", use_container_width=True,
-                     type="primary" if lt_on else "secondary"):
-            ss['proc2_gantt_light'] = not lt_on
-            st.rerun()
-
     # [오버랩] 모드 전환 (lane: 레인 재배치 / cascade: 날짜 밀기)
-    with bc[5]:
+    with bc[4]:
         _om = ss.get('proc2_overlap_mode', 'lane')
         if st.button(
             "→ 날짜 밀기" if _om == 'cascade' else "↕ 레인 재배치",
@@ -235,11 +225,11 @@ def _render_gantt_ctrl_row(ss: dict):
             st.rerun()
 
     # [이동] 1주 앞/뒤
-    with bc[6]:
+    with bc[5]:
         if st.button("◀ 1주전", key="proc2_btn_prev", use_container_width=True):
             ss['proc2_gantt_week_offset'] = ss.get('proc2_gantt_week_offset', 0) - 1
             st.rerun()
-    with bc[7]:
+    with bc[6]:
         if st.button("1주후 ▶", key="proc2_btn_next", use_container_width=True):
             ss['proc2_gantt_week_offset'] = ss.get('proc2_gantt_week_offset', 0) + 1
             st.rerun()
@@ -622,7 +612,6 @@ def render():
     # ── 간트 컨트롤 세션 상태 초기화 ─────────────────
     _ss = st.session_state
     if 'proc2_gantt_col_width'   not in _ss: _ss['proc2_gantt_col_width']   = 24
-    if 'proc2_gantt_light'       not in _ss: _ss['proc2_gantt_light']       = False
     if 'proc2_gantt_actuals'     not in _ss: _ss['proc2_gantt_actuals']     = False
     if 'proc2_gantt_week_offset' not in _ss: _ss['proc2_gantt_week_offset'] = 0
     if 'proc2_overlap_mode'      not in _ss: _ss['proc2_overlap_mode']      = 'lane'
@@ -685,7 +674,7 @@ def render():
                                         wrap_max_height="calc(100vh - 140px)",
                                         show_hidden=False,
                                         col_width=_ss['proc2_gantt_col_width'],
-                                        light_theme=_ss['proc2_gantt_light'],
+                                        light_theme=False,
                                         show_actuals=_ss['proc2_gantt_actuals'],
                                         week_offset=_ss['proc2_gantt_week_offset'],
                                         overlap_mode=_ss.get('proc2_overlap_mode', 'lane'))
@@ -1186,7 +1175,7 @@ def render():
                                         row_mode=row_mode,
                                         show_hidden=False,
                                         col_width=_ss['proc2_gantt_col_width'],
-                                        light_theme=_ss['proc2_gantt_light'],
+                                        light_theme=False,
                                         show_actuals=_ss['proc2_gantt_actuals'],
                                         week_offset=_ss['proc2_gantt_week_offset'],
                                         overlap_mode=_ss.get('proc2_overlap_mode', 'lane'))

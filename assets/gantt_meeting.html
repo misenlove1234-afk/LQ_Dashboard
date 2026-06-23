@@ -41,26 +41,6 @@
   --separator-color:   rgba(56,189,248,0.90);
   --separator-outside: rgba(249,115,22,0.95);
 }
-/* ── 라이트 테마 오버라이드 ── */
-body.light-theme {
-  --bg-body:    #f0f4f8;
-  --bg-wrap:    #ffffff;
-  --bg-area:    #bfdbfe;
-  --bg-header:  #dbeafe;
-  --bg-month:   #93c5fd;
-  --bg-legend:  rgba(30,74,140,0.08);
-  --text-main:  #1e293b;
-  --text-area:  #000000;
-  --text-header: #000000;
-  --text-month: #000000;
-  --bg-row:     #eff6ff;
-  --border-grid: #000000;
-  --border-area: #000000;
-  --holiday-bg: rgba(202,138,4,0.20);
-  --today-bg:   rgba(220,38,38,0.22);
-  --separator-color:   #1d4ed8;
-  --separator-outside: #c2410c;
-}
 
 body {
   font-family: "Malgun Gothic", "맑은 고딕", -apple-system, sans-serif;
@@ -159,21 +139,12 @@ body {
   background: rgb(253,224,71) !important;
   color: #713f12 !important; font-weight: 700 !important;
 }
-body.light-theme .excel-gantt td.saturday { background: rgba(253,224,71,0.40) !important; }
-body.light-theme .excel-gantt th.saturday {
-  background: rgb(234,179,8) !important; color: #422006 !important;
-}
 /* 공휴일 — 초록색 계열 (bar 셀 포함 열 전체 강조) */
 .excel-gantt td.holiday,
 .excel-gantt td.bar.holiday { background: rgba(134,239,172,0.35) !important; }
 .excel-gantt th.holiday {
   background: rgb(34,197,94) !important;
   color: #14532d !important; font-weight: 700 !important;
-}
-body.light-theme .excel-gantt td.holiday,
-body.light-theme .excel-gantt td.bar.holiday { background: rgba(134,239,172,0.55) !important; }
-body.light-theme .excel-gantt th.holiday {
-  background: rgb(22,163,74) !important; color: #052e16 !important;
 }
 .excel-gantt td.today, .excel-gantt th.today {
   background: var(--today-bg) !important;
@@ -339,7 +310,6 @@ let pendingChanges = [];
 let showHidden   = __INIT_SHOW_HIDDEN__;    // true | false
 let COL_W        = __INIT_COL_WIDTH__;      // 16 | 24 | 36
 let FONT_SIZE_PX = COL_W <= 16 ? 13 : COL_W <= 24 ? 18 : 22;
-let isLightTheme = __INIT_LIGHT_THEME__;    // true | false
 let showActuals  = __INIT_SHOW_ACTUALS__;   // true | false
 const WEEK_OFFSET = __INIT_WEEK_OFFSET__;  // 주 단위 오프셋 (정수)
 let overlapMode = '__INIT_OVERLAP_MODE__';  // 'lane' | 'cascade'
@@ -347,7 +317,6 @@ let overlapMode = '__INIT_OVERLAP_MODE__';  // 'lane' | 'cascade'
 // 초기 상태 적용 (Streamlit 주입값 기준)
 function initGanttState() {
   document.documentElement.style.setProperty('--col-w', COL_W + 'px');
-  document.body.classList.toggle('light-theme', isLightTheme);
 }
 
 function toggleHidden() {
@@ -361,12 +330,6 @@ function setColWidth(w) {
   FONT_SIZE_PX = w <= 16 ? 13 : w <= 24 ? 18 : 22;
   document.documentElement.style.setProperty('--col-w', w + 'px');
   render();
-}
-
-// 라이트/다크 테마 토글
-function toggleTheme() {
-  isLightTheme = !isLightTheme;
-  document.body.classList.toggle('light-theme', isLightTheme);
 }
 
 // 실적 보기 토글 (착수없음=20%, 착수만=70%, 착수+종료=100%)
@@ -858,9 +821,12 @@ function render() {
   gridEl.innerHTML = html;
 
   // 권한에 따른 상태바 메시지 및 막대 커서 설정
-  document.getElementById('status-bar').innerHTML = IS_EDITABLE
-    ? `📊 공정 타임라인 — 막대를 드래그하여 일정을 조정하세요 &nbsp;<span style="color:#86efac;">✅ ${CURRENT_USER}</span>`
-    : `🔒 읽기 전용 — <strong style="color:#fca5a5;">편집 권한이 없습니다.</strong> &nbsp;관리자에게 권한을 요청하세요. <span style="color:#64748b;">(접속자: ${CURRENT_USER})</span>`;
+  const _statusEl = document.getElementById('status-bar');
+  if (IS_EDITABLE) {
+    _statusEl.innerHTML = `📊 공정 타임라인 — 막대를 드래그하여 일정을 조정하세요 &nbsp;<span style="color:#86efac;">✅ ${CURRENT_USER}</span>`;
+  } else {
+    _statusEl.style.display = 'none';
+  }
 
   if (!IS_EDITABLE) {
     document.querySelectorAll('#gantt-grid td.bar').forEach(el => {
