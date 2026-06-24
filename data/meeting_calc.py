@@ -512,7 +512,7 @@ def calc_and_save(vessel_no: str) -> dict:
             ("선각용접",       "attach_end",     "weld_end"),
             ("선각FLOOR곡직",  "weld_end",       "floor_straight"),
             ("선각WALL곡직",   "floor_straight", "wall_straight"),
-            ("선각검사",       "wall_straight",  "insp_date"),
+            ("선각검사",       "insp_date",      "insp_date"),   # 검사일 당일 1일 이벤트
         ]
         for deck, anc in anchor50.items():
             for work_code, s_key, e_key in _SUNGGAK_SEQ:
