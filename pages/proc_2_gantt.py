@@ -104,7 +104,7 @@ def render_gantt_tab(current_user: str, is_admin: bool):
     with col_stg:
         stg_filter = st.radio(
             "공종 필터",
-            ["전체", "30STG", "50STG", "In/Out"],
+            ["전체", "30STG", "50STG"],
             horizontal=True,
             key="proc2_gantt_stg",
         )
@@ -114,15 +114,11 @@ def render_gantt_tab(current_user: str, is_admin: bool):
 
     tasks = _schedule_to_tasks(vessel_no)
 
-    # STG 필터 적용
-    _STG_FILTER_MAP = {
-        "30STG": "30",
-        "50STG": "50",
-        "In/Out": "inout",
-    }
-    if stg_filter != "전체":
-        stg_key = _STG_FILTER_MAP.get(stg_filter, "")
-        tasks = [t for t in tasks if t.get("gj") == _STG_LABEL.get(stg_key, stg_filter)]
+    # STG 필터 적용 (50STG는 In/Out 포함)
+    if stg_filter == "30STG":
+        tasks = [t for t in tasks if t.get("gj") == "30STG"]
+    elif stg_filter == "50STG":
+        tasks = [t for t in tasks if t.get("gj") in ("50STG", "In/Out")]
 
     if not tasks:
         with col_info:
