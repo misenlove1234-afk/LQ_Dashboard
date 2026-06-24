@@ -105,11 +105,17 @@ body {
 .excel-gantt thead tr:nth-child(3) th { top: 48px; }
 
 .excel-gantt td.saturday, .excel-gantt th.saturday {
-  background: rgba(234,179,8,0.42) !important;
+  background: #78450a !important;
 }
 .excel-gantt td.today, .excel-gantt th.today {
-  background: rgba(239,68,68,0.52) !important;
+  background: #991b1b !important;
   color: #fca5a5; font-weight: 700;
+}
+
+/* In/Outside 구역: 행 높이 1.5배 */
+.excel-gantt tr.tall-row td,
+.excel-gantt tr.tall-row th {
+  height: 36px;
 }
 
 /* ── 작업 막대 ── */
@@ -169,6 +175,21 @@ body {
   padding: 1rem;
 }
 
+/* ── 최대화 버튼 ── */
+#btn-maximize {
+  float: right; margin-left: 0.6rem;
+  background: rgba(56,189,248,0.1); border: 1px solid rgba(56,189,248,0.3);
+  color: #7dd3fc; border-radius: 4px; padding: 2px 10px;
+  cursor: pointer; font-size: 0.82rem; white-space: nowrap;
+}
+#btn-maximize:hover { background: rgba(56,189,248,0.25); }
+
+/* 전체화면 모드 */
+:fullscreen body, :-webkit-full-screen body { padding: 4px; }
+:fullscreen .gantt-wrap, :-webkit-full-screen .gantt-wrap {
+  max-height: calc(100vh - 110px) !important;
+}
+
 /* ── 빠른 날짜 조정 패널 (막대 클릭 시 표시) ── */
 #quick-edit-panel {
   display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
@@ -213,8 +234,9 @@ body {
   </span>
 </div>
 
-<!-- ── 상태 표시 ── -->
+<!-- ── 상태 표시 + 최대화 버튼 ── -->
 <div id="status-bar" class="status-bar">
+  <button id="btn-maximize" onclick="toggleFullscreen()">⛶ 최대화</button>
   📊 공정 타임라인 — 막대를 드래그하여 일정을 조정하세요
 </div>
 
@@ -565,9 +587,13 @@ function render() {
   const dateIndex = {};
   dates.forEach((d,i) => { dateIndex[_dateKey(d)] = i; });
 
-  // 그룹별 레인 분배 (겹치면 별도 레인) — 30stg 모드는 고정 5행이므로 불필요
+  // M블럭 구역 감지 (30STG 5행 레이아웃 적용 대상 — ship 모드 제외)
+  const isM30Area = (area) => ROW_MODE !== 'ship' && /^M\d+/.test(area);
+
+  // 그룹별 레인 분배 (겹치면 별도 레인) — M블럭은 고정 5행이므로 제외
   const groupLanes = {};
-  if (ROW_MODE !== '30stg') groups.forEach(g => {
+  groups.forEach(g => {
+    if (isM30Area(g)) return; // M블럭은 render30STGRows()에서 처리
     const tasks = ganttData.filter(t => t[groupKey] === g);
     tasks.sort((x,y) => _parseLocalDate(x.s) - _parseLocalDate(y.s));
     const lanes = [];
@@ -636,13 +662,14 @@ function render() {
 
   // 바디
   groups.forEach(group => {
-    if (ROW_MODE === '30stg') {
-      // 30STG 전용: 고정 5행 레이아웃 (관철/덕트/전장/도장/배선 + tall bars)
+    if (isM30Area(group)) {
+      // 30STG M블럭: 고정 5행 레이아웃 (관철/덕트/전장/도장/배선 + tall bars)
       html += render30STGRows(group, dates, dateIndex);
     } else {
       const lanes = groupLanes[group];
       lanes.forEach((lane, laneIdx) => {
-        html += '<tr>';
+        const trClass = (group === 'In/Outside') ? ' class="tall-row"' : '';
+        html += `<tr${trClass}>`;
         if (laneIdx === 0) {
           let headerHtml;
           if (ROW_MODE === 'ship') {
@@ -940,7 +967,7 @@ function onDragEnd(e) {
   if (!wasMoved) {
     // 클릭 → 날짜 조정 패널 열기
     const task = ganttData.find(t => t.id === taskId);
-    if (IS_EDITABLE && task) showQuickPanel(task);
+    if (IS_EDITABLE && task) showQuickPanel(task, dragState.srcEl);
   } else if (dropDate) {
     applyDragChange(dragState, dropDate);
   }
@@ -1075,7 +1102,7 @@ let quickTask = null;
 let qepStart  = '';
 let qepEnd    = '';
 
-function showQuickPanel(task) {
+function showQuickPanel(task, clickedEl) {
   quickTask = task;
   qepStart  = task.s;
   qepEnd    = task.e;
@@ -1083,11 +1110,26 @@ function showQuickPanel(task) {
   document.getElementById('qep-start').textContent = qepStart;
   document.getElementById('qep-end').textContent   = qepEnd;
   document.getElementById('quick-edit-panel').style.display = 'flex';
+
+  // 강조: 클릭 막대 100%, 동일 작업명 75%, 나머지 50%
+  document.querySelectorAll('#gantt-grid td.bar').forEach(el => {
+    if (el === clickedEl) {
+      el.style.opacity = '1';
+    } else {
+      const tid = el.getAttribute('data-task-id') || '';
+      const taskCode = tid.split('|')[3] || '';
+      el.style.opacity = taskCode === task.task ? '0.75' : '0.5';
+    }
+  });
 }
 
 function closeQuickPanel() {
   quickTask = null;
   document.getElementById('quick-edit-panel').style.display = 'none';
+  // 강조 해제
+  document.querySelectorAll('#gantt-grid td.bar').forEach(el => {
+    el.style.opacity = '';
+  });
 }
 
 function adjustQepDate(which, delta) {
@@ -1127,6 +1169,27 @@ function applyQuickEdit() {
   closeQuickPanel();
   render();
 }
+
+// ══════════════════════════════════════════════
+// 최대화/축소 토글
+// ══════════════════════════════════════════════
+function toggleFullscreen() {
+  const el = document.documentElement;
+  if (!document.fullscreenElement) {
+    el.requestFullscreen().catch(() => {
+      // fullscreen API 미지원 시 높이만 확장
+      document.getElementById('gantt-wrap').style.maxHeight = 'calc(100vh - 80px)';
+    });
+  } else {
+    document.exitFullscreen();
+  }
+}
+function _updateMaxBtn() {
+  const btn = document.getElementById('btn-maximize');
+  if (!btn) return;
+  btn.textContent = document.fullscreenElement ? '⊡ 축소' : '⛶ 최대화';
+}
+document.addEventListener('fullscreenchange', _updateMaxBtn);
 
 // 초기 렌더링
 renderLegend(colorMap);

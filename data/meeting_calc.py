@@ -353,11 +353,9 @@ def calc_50stg(
     if inout_io.get("트렁크배선"):
         trunk_end = inout_io["트렁크배선"][1]
 
-    # 데크별 이전 공종 완료일 (순차 제약 추적)
+    # 데크별 이전 공종 완료일 (순차 제약 추적) — UPP-DK 포함 전 데크
     prev_end_by_deck: dict[str, datetime.date | None] = {d: None for d in decks}
     for deck in decks:
-        if deck == "UPP-DK":
-            continue
         insp = _get_inspection_date(anchor50.get(deck, {}))
         if insp:
             prev_end_by_deck[deck] = insp
@@ -371,8 +369,6 @@ def calc_50stg(
         ref_col      = step.get("ref_col", "")
 
         for i, deck in enumerate(decks):
-            if deck == "UPP-DK":
-                continue
 
             days = _safe_int(ref.get(deck, {}).get(ref_col)) if ref_col and str(ref_col) not in ("nan", "") else 0
             if days == 0:
@@ -522,8 +518,10 @@ def calc_and_save(vessel_no: str) -> dict:
             for work_code, s_key, e_key in _SUNGGAK_SEQ:
                 s_d = anc.get(s_key)
                 e_d = anc.get(e_key)
-                if s_d is None or e_d is None:
-                    continue
+                if e_d is None:
+                    continue  # 종료일 없으면 표시 불가
+                if s_d is None:
+                    s_d = e_d  # 시작일 없으면 종료일 기준 1일 이벤트
                 if s_d > e_d:
                     s_d = e_d
                 _ins("50", deck, work_code, s_d, e_d)

@@ -135,14 +135,13 @@ def render_gantt_tab(current_user: str, is_admin: bool):
             "| 막대 **드래그**=이동, **클릭**=± 날짜 조정"
         )
 
-    # ── 간트 렌더링 (30STG는 고정 5행 레이아웃) ──
-    gantt_row_mode = "30stg" if stg_filter == "30STG" else "area"
+    # ── 간트 렌더링 (M블럭 30STG 5행 레이아웃은 gantt_editor.html이 자동 감지) ──
     _render_gantt_component(
         tasks,
         is_editable=is_admin,
         current_user=current_user,
         height=780,
-        row_mode=gantt_row_mode,
+        row_mode="area",
         wrap_max_height="560px",
     )
 
