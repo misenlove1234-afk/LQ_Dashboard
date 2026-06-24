@@ -205,6 +205,21 @@ def calc_30stg(vessel_no: str, vessel_type: str) -> dict:
             if block_no in exc_blocks_map.get(work_code, []):
                 continue
 
+            # 뒤집기: blk_out 기준 역산 (블럭별 작업일 오프셋 상이)
+            if work_code == "뒤집기":
+                if blk_out is None:
+                    continue
+                if block_no == "M610C":
+                    offset = 4
+                elif block_no in ("M31NP", "M51NP", "M900P", "M900S"):
+                    offset = 1
+                else:
+                    offset = 2
+                flip_date = subtract_working_days(blk_out, offset, holiday_set)
+                block_sched[work_code] = (flip_date, flip_date)
+                prev_end = flip_date
+                continue
+
             if dur_type == "anchor":
                 anchor_date = blk_in if work_code == "blk_in" else blk_out
                 if anchor_date:
