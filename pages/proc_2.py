@@ -199,6 +199,7 @@ TAB_OPTIONS = [
     "🗂️  구역별 상세 현황",
     "⚙️  기준정보",
     "🖩  데이터 계산",
+    "📅  간트차트",
 ]
 
 
@@ -1156,3 +1157,10 @@ def render():
     elif tab_choice == tab_options[3]:
         from pages.proc_2_meeting import render_meeting_tab
         render_meeting_tab(current_user=current_user, is_admin=st.session_state.get("is_admin", False))
+
+    # ══════════════════════════════════════════════
+    #  Tab 5: 간트차트 (lq_meet_schedule 전용)
+    # ══════════════════════════════════════════════
+    elif tab_choice == tab_options[4]:
+        from pages.proc_2_gantt import render_gantt_tab
+        render_gantt_tab(current_user=current_user, is_admin=st.session_state.get("is_admin", False))

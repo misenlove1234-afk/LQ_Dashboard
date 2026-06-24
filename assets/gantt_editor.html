@@ -168,6 +168,37 @@ body {
   background: rgba(56,189,248,0.05); border-radius: 6px;
   padding: 1rem;
 }
+
+/* ── 빠른 날짜 조정 패널 (막대 클릭 시 표시) ── */
+#quick-edit-panel {
+  display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
+  margin-bottom: 0.6rem; padding: 8px 12px;
+  background: rgba(16,185,129,0.08);
+  border: 1px solid rgba(16,185,129,0.35);
+  border-radius: 6px; font-size: 0.88rem;
+}
+.qep-info {
+  color: #7dd3fc; font-weight: 600; flex-shrink: 0;
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.qep-date-group { display: flex; align-items: center; gap: 0.3rem; }
+.qep-label { color: #94a3b8; font-size: 0.78rem; flex-shrink: 0; }
+.qep-date  { color: #fbbf24; font-weight: 700; min-width: 82px; text-align: center; }
+.qep-btn {
+  background: rgba(56,189,248,0.12); border: 1px solid rgba(56,189,248,0.25);
+  color: #7dd3fc; border-radius: 3px; padding: 2px 8px;
+  cursor: pointer; font-size: 0.82rem; line-height: 1.5;
+}
+.qep-btn:hover { background: rgba(56,189,248,0.28); }
+.qep-btn-apply {
+  background: rgba(16,185,129,0.2); border-color: rgba(16,185,129,0.45); color: #34d399;
+}
+.qep-btn-apply:hover { background: rgba(16,185,129,0.38); }
+.qep-btn-cancel {
+  background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.3); color: #fca5a5;
+  margin-left: auto;
+}
+.qep-btn-cancel:hover { background: rgba(239,68,68,0.28); }
 </style>
 </head>
 <body>
@@ -185,6 +216,25 @@ body {
 <!-- ── 상태 표시 ── -->
 <div id="status-bar" class="status-bar">
   📊 공정 타임라인 — 막대를 드래그하여 일정을 조정하세요
+</div>
+
+<!-- ── 빠른 날짜 조정 패널 (막대 클릭 시 표시) ── -->
+<div id="quick-edit-panel" style="display:none;">
+  <span class="qep-info" id="qep-info"></span>
+  <span class="qep-date-group">
+    <span class="qep-label">시작</span>
+    <button class="qep-btn" onclick="adjustQepDate('start',-1)">◀</button>
+    <span class="qep-date" id="qep-start"></span>
+    <button class="qep-btn" onclick="adjustQepDate('start',+1)">▶</button>
+  </span>
+  <span class="qep-date-group">
+    <span class="qep-label">종료</span>
+    <button class="qep-btn" onclick="adjustQepDate('end',-1)">◀</button>
+    <span class="qep-date" id="qep-end"></span>
+    <button class="qep-btn" onclick="adjustQepDate('end',+1)">▶</button>
+  </span>
+  <button class="qep-btn qep-btn-apply" onclick="applyQuickEdit()">✓ 적용</button>
+  <button class="qep-btn qep-btn-cancel" onclick="closeQuickPanel()">✕ 닫기</button>
 </div>
 
 <!-- ── 그리드 ── -->
@@ -518,7 +568,7 @@ function render() {
 
   // 권한에 따른 상태바 메시지 및 막대 커서 설정
   document.getElementById('status-bar').innerHTML = IS_EDITABLE
-    ? `📊 공정 타임라인 — 막대를 드래그하여 일정을 조정하세요 &nbsp;<span style="color:#86efac;">✅ ${CURRENT_USER}</span>`
+    ? `📊 공정 타임라인 — 막대 <strong>드래그</strong>=이동 · <strong>클릭</strong>=± 날짜 조정 &nbsp;<span style="color:#86efac;">✅ ${CURRENT_USER}</span>`
     : `🔒 읽기 전용 — <strong style="color:#fca5a5;">편집 권한이 없습니다.</strong> &nbsp;관리자에게 권한을 요청하세요. <span style="color:#64748b;">(접속자: ${CURRENT_USER})</span>`;
 
   if (!IS_EDITABLE) {
@@ -576,6 +626,9 @@ function onBarMouseDown(e) {
     originalEnd:   bar.dataset.end,
     originalArea:  bar.dataset.area,
     barEl:         bar,
+    clickX:        e.clientX,
+    clickY:        e.clientY,
+    moved:         false,
   };
   bar.classList.add('dragging');
   document.addEventListener('mousemove', onDragMove);
@@ -706,6 +759,13 @@ function _cellDateAt(td, clientX) {
 
 function onDragMove(e) {
   if (!dragState) return;
+  // 5px 이상 이동해야 드래그로 판정
+  if (!dragState.moved) {
+    const dx = Math.abs(e.clientX - dragState.clickX);
+    const dy = Math.abs(e.clientY - dragState.clickY);
+    if (dx > 5 || dy > 5) dragState.moved = true;
+  }
+  if (!dragState.moved) return;
   const el = document.elementFromPoint(e.clientX, e.clientY);
   const td = el?.closest('td');
   const date = _cellDateAt(td, e.clientX);
@@ -721,16 +781,26 @@ function onDragEnd(e) {
   const el = document.elementFromPoint(e.clientX, e.clientY);
   const td = el?.closest('td');
   const dropDate = _cellDateAt(td, e.clientX);
+  const wasMoved = dragState.moved;
+  const taskId   = dragState.taskId;
 
   dragState.barEl.classList.remove('dragging');
   clearDragPreview();
-  if (dropDate) applyDragChange(dragState, dropDate);
+
+  if (!wasMoved) {
+    // 클릭 → 날짜 조정 패널 열기
+    const task = ganttData.find(t => t.id === taskId);
+    if (IS_EDITABLE && task) showQuickPanel(task);
+  } else if (dropDate) {
+    applyDragChange(dragState, dropDate);
+  }
 
   document.removeEventListener('mousemove', onDragMove);
   document.removeEventListener('mouseup',   onDragEnd);
   dragState = null;
-  document.getElementById('status-bar').innerHTML =
-    '📊 공정 타임라인 — 막대를 드래그하여 일정을 조정하세요';
+  document.getElementById('status-bar').innerHTML = IS_EDITABLE
+    ? `📊 공정 타임라인 — 막대 <strong>드래그</strong>=이동 · <strong>클릭</strong>=± 날짜 조정 &nbsp;<span style="color:#86efac;">✅ ${CURRENT_USER}</span>`
+    : `🔒 읽기 전용 — <strong style="color:#fca5a5;">편집 권한이 없습니다.</strong>`;
 }
 
 function applyDragChange(state, newDate) {
@@ -845,6 +915,66 @@ function cancelGanttChanges() {
   ganttData.length = 0;
   JSON.parse(JSON.stringify(ganttDataOriginal)).forEach(t => ganttData.push(t));
   pendingChanges = [];
+  render();
+}
+
+// ══════════════════════════════════════════════
+// 빠른 날짜 조정 패널 (클릭 → ± 버튼)
+// ══════════════════════════════════════════════
+let quickTask = null;
+let qepStart  = '';
+let qepEnd    = '';
+
+function showQuickPanel(task) {
+  quickTask = task;
+  qepStart  = task.s;
+  qepEnd    = task.e;
+  document.getElementById('qep-info').textContent  = `${task.proj} · ${task.area} · ${task.task}`;
+  document.getElementById('qep-start').textContent = qepStart;
+  document.getElementById('qep-end').textContent   = qepEnd;
+  document.getElementById('quick-edit-panel').style.display = 'flex';
+}
+
+function closeQuickPanel() {
+  quickTask = null;
+  document.getElementById('quick-edit-panel').style.display = 'none';
+}
+
+function adjustQepDate(which, delta) {
+  const cur = (which === 'start') ? qepStart : qepEnd;
+  const [y, m, d] = cur.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + delta);
+  const next = dt.toISOString().split('T')[0];
+  if (which === 'start') {
+    if (next >= qepEnd) { alert('시작일이 종료일보다 늦을 수 없습니다.'); return; }
+    qepStart = next;
+    document.getElementById('qep-start').textContent = qepStart;
+  } else {
+    if (next <= qepStart) { alert('종료일이 시작일보다 빠를 수 없습니다.'); return; }
+    qepEnd = next;
+    document.getElementById('qep-end').textContent = qepEnd;
+  }
+}
+
+function applyQuickEdit() {
+  if (!quickTask) return;
+  if (qepStart === quickTask.s && qepEnd === quickTask.e) { closeQuickPanel(); return; }
+
+  const existing = pendingChanges.find(c => c.id === quickTask.id);
+  if (existing) {
+    existing.newStart = qepStart;
+    existing.newEnd   = qepEnd;
+  } else {
+    pendingChanges.push({
+      id: quickTask.id, proj: quickTask.proj, gj: quickTask.gj, task: quickTask.task,
+      oldArea: quickTask.area, oldStart: quickTask.s, oldEnd: quickTask.e,
+      newArea: quickTask.area, newStart: qepStart,    newEnd: qepEnd,
+    });
+  }
+  quickTask.s = qepStart;
+  quickTask.e = qepEnd;
+  closeQuickPanel();
   render();
 }
 
