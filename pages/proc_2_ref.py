@@ -763,30 +763,18 @@ def _tab_anchor_template():
 
     st.markdown("---")
 
-    # ── 입력 방식 선택 ───────────────────────────────────────────
-    st.markdown("#### 데이터 입력")
-    input_mode = st.radio(
-        "입력 방식",
-        ["✏️ 직접 입력", "📋 붙여넣기 (Excel Ctrl+C→V)", "📤 CSV 파일 업로드"],
-        horizontal=True,
-        key="ref_anchor_input_mode",
+    # ── 직접 입력 ─────────────────────────────────────────────────
+    st.markdown("#### ✏️ 직접 입력")
+    direct_tab = st.radio(
+        "입력 대상", ["🚢 호선 등록", "📦 30STG 앵커", "🏗️ 50STG 앵커"],
+        horizontal=True, key="ref_anchor_direct_tab",
     )
-
-    if input_mode == "📋 붙여넣기 (Excel Ctrl+C→V)":
-        _section_paste()
-    elif input_mode == "📤 CSV 파일 업로드":
-        _section_csv()
+    if direct_tab == "🚢 호선 등록":
+        _direct_vessel()
+    elif direct_tab == "📦 30STG 앵커":
+        _direct_30stg()
     else:
-        direct_tab = st.radio(
-            "입력 대상", ["🚢 호선 등록", "📦 30STG 앵커", "🏗️ 50STG 앵커"],
-            horizontal=True, key="ref_anchor_direct_tab",
-        )
-        if direct_tab == "🚢 호선 등록":
-            _direct_vessel()
-        elif direct_tab == "📦 30STG 앵커":
-            _direct_30stg()
-        else:
-            _direct_50stg()
+        _direct_50stg()
 
     st.markdown("---")
 
