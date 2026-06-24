@@ -93,13 +93,20 @@ def render_gantt_tab(current_user: str, is_admin: bool):
         st.info("💡 등록된 호선이 없습니다. '기준정보' 탭에서 호선을 먼저 등록해 주세요.")
         return
 
-    # ── 호선 선택 ──
-    col_sel, col_info = st.columns([2, 5])
+    # ── 호선 선택 + STG 필터 ──
+    col_sel, col_stg, col_info = st.columns([2, 3, 3])
     with col_sel:
         vessel_no = st.selectbox(
             "호선 선택",
             list(vessels_df["vessel_no"]),
             key="proc2_gantt_vessel",
+        )
+    with col_stg:
+        stg_filter = st.radio(
+            "공종 필터",
+            ["전체", "30STG", "50STG", "In/Out"],
+            horizontal=True,
+            key="proc2_gantt_stg",
         )
 
     if not vessel_no:
@@ -107,17 +114,27 @@ def render_gantt_tab(current_user: str, is_admin: bool):
 
     tasks = _schedule_to_tasks(vessel_no)
 
+    # STG 필터 적용
+    _STG_FILTER_MAP = {
+        "30STG": "30",
+        "50STG": "50",
+        "In/Out": "inout",
+    }
+    if stg_filter != "전체":
+        stg_key = _STG_FILTER_MAP.get(stg_filter, "")
+        tasks = [t for t in tasks if t.get("gj") == _STG_LABEL.get(stg_key, stg_filter)]
+
     if not tasks:
         with col_info:
             st.info(
-                f"**{vessel_no}** 의 계산된 일정이 없습니다. "
+                f"**{vessel_no}** — **{stg_filter}** 에 해당하는 계산된 일정이 없습니다. "
                 "'데이터 계산' 탭에서 먼저 **원클릭 계산**을 실행해 주세요."
             )
         return
 
     with col_info:
         st.caption(
-            f"📊 **{vessel_no}** — {len(tasks)}개 공정 "
+            f"📊 **{vessel_no}** / {stg_filter} — {len(tasks)}개 공정 "
             f"| {'✏️ 편집 가능 (관리자)' if is_admin else '🔒 읽기 전용'} "
             "| 막대 **드래그**=이동, **클릭**=± 날짜 조정"
         )

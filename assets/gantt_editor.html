@@ -83,7 +83,7 @@ body {
 .excel-gantt th, .excel-gantt td {
   border: 1px solid rgba(56,189,248,0.12);
   padding: 0; text-align: center; vertical-align: middle;
-  height: 22px; min-width: 26px; max-width: 26px;
+  height: 24px; min-width: 36px; max-width: 36px;
   overflow: hidden; white-space: nowrap;
 }
 .excel-gantt .area-cell {
@@ -105,10 +105,10 @@ body {
 .excel-gantt thead tr:nth-child(3) th { top: 48px; }
 
 .excel-gantt td.saturday, .excel-gantt th.saturday {
-  background: rgba(253,224,71,0.12) !important;
+  background: rgba(234,179,8,0.42) !important;
 }
 .excel-gantt td.today, .excel-gantt th.today {
-  background: rgba(244,63,94,0.18) !important;
+  background: rgba(239,68,68,0.52) !important;
   color: #fca5a5; font-weight: 700;
 }
 
@@ -261,97 +261,105 @@ const ROW_MODE          = '__ROW_MODE__';  // 'area' | 'ship'
 let pendingChanges = [];
 
 // ══════════════════════════════════════════════
-// 동적 색상 시스템
-//   - 공종 수에 관계없이 황금각(137.5°) 분포로 색조 자동 배정
-//   - 같은 작업내용 = 같은 색 (구역/공종 무관)
+// 동적 색상 시스템 — 작업명별 고유 색상 배정
+//   공종별 고정 색 우선, 나머지는 황금각 자동 배정
 // ══════════════════════════════════════════════
 
-// 공종별 색조(hue) 배정 — 황금각 분포로 최대 시각적 차별화
-function assignGjHues(data) {
-  const gjList = [];
-  const seen   = new Set();
-  data.forEach(t => {
-    if (t.gj && !seen.has(t.gj)) { gjList.push(t.gj); seen.add(t.gj); }
-  });
-  const hueMap = {};
-  gjList.forEach((gj, i) => {
-    // 200(하늘)을 시작점으로 황금각(137.5°) 간격
-    hueMap[gj] = Math.round((200 + i * 137.5) % 360);
-  });
-  return hueMap;
-}
+const FIXED_TASK_COLORS = {
+  // 30STG 공종 고정 색
+  '관철':   '#3b82f6',  // 파랑
+  '덕트':   '#38bdf8',  // 하늘
+  '전장':   '#ef4444',  // 빨강
+  '도장':   '#1d4ed8',  // 남색
+  '배선':   '#22c55e',  // 초록
+  '족장설치': '#16a34a', // 진초록
+  '뒤집기': '#92400e',  // 갈색
+  'blk_in':  '#b45309', // 블럭입고 (갈색 계열)
+  'blk_out': '#a16207', // 블럭탑재 (갈색 계열)
+  '블럭탑재': '#a16207',
+  // 50STG 선각 계열
+  '선각취부':      '#60a5fa',
+  '선각용접':      '#7c3aed',
+  '선각FLOOR곡직': '#a78bfa',
+  '선각WALL곡직':  '#c4b5fd',
+  '선각검사':      '#f59e0b',
+};
 
-// 특정 색조에서 idx번째 변형 색상 생성 (HSL)
-// 다크 배경 + 어두운 텍스트 모두 지원: S 60~85%, L 55~70%
-function paletteColor(hue, idx) {
-  const VARIANTS = [
-    [72, 63], [84, 57], [62, 70], [88, 54], [68, 67], [78, 60],
-  ];
-  const [s, l] = VARIANTS[idx % VARIANTS.length];
-  return `hsl(${hue},${s}%,${l}%)`;
-}
-
-// 작업내용 기준 색상 맵 (키: task명 — 구역·공종 무관, 같은 작업명=같은 색)
-function buildColorMap(data, gjHueMap) {
-  const map   = {};
-  const gjIdx = {};
+function buildColorMap(data) {
+  const taskList = [];
+  const seen = new Set();
   data.forEach(t => {
-    if (!map[t.task]) {
-      const hue    = gjHueMap[t.gj] ?? 0;
-      const idx    = gjIdx[t.gj] ?? 0;
-      map[t.task]  = paletteColor(hue, idx);
-      gjIdx[t.gj]  = idx + 1;
+    if (!seen.has(t.task)) { taskList.push(t.task); seen.add(t.task); }
+  });
+  const map = {};
+  let autoIdx = 0;
+  taskList.forEach(task => {
+    if (FIXED_TASK_COLORS[task]) {
+      map[task] = FIXED_TASK_COLORS[task];
+    } else {
+      const hue = Math.round((30 + autoIdx * 137.5) % 360);
+      const sat = 65 + (autoIdx % 3) * 8;
+      const lit = 58 + (autoIdx % 4) * 4;
+      map[task] = `hsl(${hue},${sat}%,${lit}%)`;
+      autoIdx++;
     }
   });
   return map;
 }
 
-// 범례 동적 렌더링 (공종 목록을 데이터에서 읽어 생성)
-function renderLegend(gjHueMap) {
+function renderLegend(colorMap) {
   const el = document.getElementById('legend-row');
   if (!el) return;
   const staticSuffix = el.innerHTML;  // 토요일/오늘 항목 보존
-  let html = '<span style="font-size:0.78rem;color:#64748b;margin-right:0.4rem;flex-shrink:0;">공종 ▶</span>';
-  Object.entries(gjHueMap).forEach(([gj, hue]) => {
-    const c = [paletteColor(hue,0), paletteColor(hue,1), paletteColor(hue,2)];
+  let html = '<span style="font-size:0.78rem;color:#64748b;margin-right:0.4rem;flex-shrink:0;">작업 ▶</span>';
+  const entries = Object.entries(colorMap);
+  const MAX = 24;
+  entries.slice(0, MAX).forEach(([task, color]) => {
     html += `<span class="legend-item">
-      <span class="legend-box" style="background:linear-gradient(90deg,${c[0]},${c[1]},${c[2]});"></span>
-      ${gj}
+      <span class="legend-box" style="background:${color};"></span>
+      ${task}
     </span>`;
   });
-  html += '<span style="font-size:0.73rem;color:#475569;margin:0 0.5rem;flex-shrink:0;">— 작업내용별 자동 구분</span>';
+  if (entries.length > MAX) {
+    html += `<span style="font-size:0.73rem;color:#475569;flex-shrink:0;">...외 ${entries.length - MAX}개</span>`;
+  }
   el.innerHTML = html + staticSuffix;
 }
 
-const gjHues   = assignGjHues(ganttData);
-const colorMap = buildColorMap(ganttData, gjHues);
+const colorMap = buildColorMap(ganttData);
 
 // ══════════════════════════════════════════════
-// Y축 구역 정렬 함수 (해도님 규칙)
-//   NAV-DK → DK 역순 → UPP-DK → M블럭(숫자↑, P→C→S)
+// Y축 구역 정렬 함수
+//   In/Outside·Elevator → STAIRWAY → NAV-DK → DK 역순 → UPP-DK → M블럭(숫자↑, N접미 해당 블럭 바로 뒤, P→C→S)
 // ══════════════════════════════════════════════
 function sortAreas(areas) {
   const SIDE_ORDER = { 'P': 0, 'C': 1, 'S': 2 };
   const getCategory = (n) => {
-    if (n === 'NAV-DK') return 0;
-    if (n === 'UPP-DK') return 2;
-    if (n.endsWith('-DK')) return 1;
-    if (/^M\d+/.test(n)) return 3;
-    return 4;
+    if (n === 'In/Outside' || n === 'Elevator') return 0;
+    if (n === 'STAIRWAY') return 1;
+    if (n === 'NAV-DK') return 2;
+    if (n === 'UPP-DK') return 4;
+    if (n.endsWith('-DK')) return 3;
+    if (/^M\d+/.test(n)) return 5;
+    return 6;
   };
+  // M블럭 숫자+접미 파싱: M31NP → [310.5, 'P'] (N접미는 기본 블럭 바로 뒤)
   const parseMBlock = (n) => {
+    const narrow = n.match(/^M(\d+)N([PS])/);
+    if (narrow) return [parseInt(narrow[1], 10) * 10 + 0.5, narrow[2]];
     const m = n.match(/^M(\d+)([A-Z]?)/);
-    return m ? [parseInt(m[1],10), m[2]||''] : [99999,''];
+    return m ? [parseInt(m[1], 10) * 10, m[2] || ''] : [99999, ''];
   };
-  return [...areas].sort((a,b) => {
+  return [...areas].sort((a, b) => {
     const ca = getCategory(a), cb = getCategory(b);
     if (ca !== cb) return ca - cb;
-    if (ca === 1) return b.charCodeAt(0) - a.charCodeAt(0);
-    if (ca === 3) {
+    // DK 구역: 알파벳 역순 (F-DK → E-DK → … → A-DK)
+    if (ca === 3) return b.charCodeAt(0) - a.charCodeAt(0);
+    if (ca === 5) {
       const [nA, sA] = parseMBlock(a);
       const [nB, sB] = parseMBlock(b);
       if (nA !== nB) return nA - nB;
-      return (SIDE_ORDER[sA]??9) - (SIDE_ORDER[sB]??9);
+      return (SIDE_ORDER[sA] ?? 9) - (SIDE_ORDER[sB] ?? 9);
     }
     return a.localeCompare(b);
   });
@@ -979,7 +987,7 @@ function applyQuickEdit() {
 }
 
 // 초기 렌더링
-renderLegend(gjHues);
+renderLegend(colorMap);
 render();
 </script>
 

@@ -509,6 +509,26 @@ def calc_and_save(vessel_no: str) -> dict:
                 _ins("50", deck, code, s, e)
                 res["50stg"] += 1
 
+        # 선각 앵커 이벤트 → lq_meet_schedule (UPP-DK 포함 전 데크 간트 표시)
+        _SUNGGAK_SEQ = [
+            ("블럭탑재",       "mount_start",    "mount_start"),
+            ("선각취부",       "mount_start",    "attach_end"),
+            ("선각용접",       "attach_end",     "weld_end"),
+            ("선각FLOOR곡직",  "weld_end",       "floor_straight"),
+            ("선각WALL곡직",   "floor_straight", "wall_straight"),
+            ("선각검사",       "wall_straight",  "insp_date"),
+        ]
+        for deck, anc in anchor50.items():
+            for work_code, s_key, e_key in _SUNGGAK_SEQ:
+                s_d = anc.get(s_key)
+                e_d = anc.get(e_key)
+                if s_d is None or e_d is None:
+                    continue
+                if s_d > e_d:
+                    s_d = e_d
+                _ins("50", deck, work_code, s_d, e_d)
+                res["50stg"] += 1
+
         conn.commit()
         conn.close()
         get_schedule.clear()
