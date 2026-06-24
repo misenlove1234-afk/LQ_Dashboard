@@ -26,7 +26,7 @@ _INIT_30STG = [
     ("LNG","M510S", 4,5,6,2,6), ("LNG","M510P", 4,5,6,2,6),
     ("LNG","M410S", 4,4,6,3,2), ("LNG","M410P", 4,4,6,3,3),
     ("LNG","M31NS", 1,0,0,0,0), ("LNG","M31NP", 1,0,0,0,0),
-    ("LNG","M31OS", 4,4,6,2,4), ("LNG","M31OP", 4,4,6,2,4),
+    ("LNG","M310S", 4,4,6,2,4), ("LNG","M310P", 4,4,6,2,4),
     ("LNG","M220S", 4,5,7,2,3), ("LNG","M220P", 4,5,7,2,3),
     ("LNG","M210S", 4,4,4,2,5), ("LNG","M210P", 4,4,4,2,5),
     ("LNG","M120S", 4,5,5,2,4), ("LNG","M120P", 4,5,5,2,4),
@@ -148,7 +148,7 @@ _INIT_BLOCK_DECK_MAP = [
     ("LNG","M510S","D-DK"),   ("LNG","M510P","D-DK"),
     ("LNG","M410S","C-DK"),   ("LNG","M410P","C-DK"),
     ("LNG","M31NS","B-DK"),   ("LNG","M31NP","B-DK"),
-    ("LNG","M31OS","B-DK"),   ("LNG","M31OP","B-DK"),
+    ("LNG","M310S","B-DK"),   ("LNG","M310P","B-DK"),
     ("LNG","M220S","A-DK"),   ("LNG","M220P","A-DK"),
     ("LNG","M210S","A-DK"),   ("LNG","M210P","A-DK"),
     ("LNG","M120S","UPP-DK"), ("LNG","M120P","UPP-DK"),
@@ -458,6 +458,13 @@ def init_tables() -> bool:
                 )
                 ALTER TABLE lq_meet_ref_inout ADD [{col}] INT DEFAULT 0
             """)
+        conn.commit()
+
+        # 블럭명 오타 수정 마이그레이션 (M31OS/M31OP → M310S/M310P)
+        for old_name, new_name in [("M31OS", "M310S"), ("M31OP", "M310P")]:
+            cur.execute("UPDATE lq_meet_ref_30stg      SET block_no=? WHERE block_no=?", (new_name, old_name))
+            cur.execute("UPDATE lq_meet_ref_block_deck SET block_no=? WHERE block_no=?", (new_name, old_name))
+            cur.execute("UPDATE lq_meet_anchor_30stg   SET block_no=? WHERE block_no=?", (new_name, old_name))
         conn.commit()
 
         # 선각 소요일 기준값 동기화 — _INIT_50STG 값으로 기존 행 강제 업데이트
