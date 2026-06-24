@@ -506,22 +506,26 @@ def calc_and_save(vessel_no: str) -> dict:
                 res["50stg"] += 1
 
         # 선각 앵커 이벤트 → lq_meet_schedule (UPP-DK 포함 전 데크 간트 표시)
+        # (work_code, s_key, e_key, s_offset_days)
+        # s_offset_days=1: 이전 공정 종료일 다음 날 시작 (오버랩 방지)
         _SUNGGAK_SEQ = [
-            ("블럭탑재",       "mount_start",    "mount_start"),
-            ("선각취부",       "mount_start",    "attach_end"),
-            ("선각용접",       "attach_end",     "weld_end"),
-            ("선각FLOOR곡직",  "weld_end",       "floor_straight"),
-            ("선각WALL곡직",   "floor_straight", "wall_straight"),
-            ("선각검사",       "insp_date",      "insp_date"),   # 검사일 당일 1일 이벤트
+            ("블럭탑재",       "mount_start",    "mount_start",    0),
+            ("선각취부",       "mount_start",    "attach_end",     0),
+            ("선각용접",       "attach_end",     "weld_end",       0),
+            ("선각FLOOR곡직",  "weld_end",       "floor_straight", 0),
+            ("선각WALL곡직",   "floor_straight", "wall_straight",  1),  # FLOOR곡직 종료 다음 날
+            ("선각검사",       "insp_date",      "insp_date",      0),  # 검사일 당일 1일
         ]
         for deck, anc in anchor50.items():
-            for work_code, s_key, e_key in _SUNGGAK_SEQ:
+            for work_code, s_key, e_key, s_offset in _SUNGGAK_SEQ:
                 s_d = anc.get(s_key)
                 e_d = anc.get(e_key)
                 if e_d is None:
                     continue  # 종료일 없으면 표시 불가
                 if s_d is None:
                     s_d = e_d  # 시작일 없으면 종료일 기준 1일 이벤트
+                if s_offset:
+                    s_d = s_d + datetime.timedelta(days=s_offset)
                 if s_d > e_d:
                     s_d = e_d
                 _ins("50", deck, work_code, s_d, e_d)
