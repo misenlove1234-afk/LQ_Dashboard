@@ -255,7 +255,7 @@ const ganttDataOriginal = JSON.parse(JSON.stringify(ganttData));
 const TODAY             = '__TODAY_DATE__';
 const IS_EDITABLE       = __IS_EDITABLE__;
 const CURRENT_USER      = '__CURRENT_USER__';
-const ROW_MODE          = '__ROW_MODE__';  // 'area' | 'ship'
+const ROW_MODE          = '__ROW_MODE__';  // 'area' | 'ship' | '30stg'
 
 // 변경 내역 누적
 let pendingChanges = [];
@@ -388,6 +388,143 @@ function daysBetween(d1, d2) {
 }
 
 // ══════════════════════════════════════════════
+// 30STG 5행 고정 레이아웃 렌더링
+//   M블럭별 고정 5행: 관철/덕트/전장/도장/배선
+//   blk_in/족장설치/뒤집기/blk_out → rowspan=5 tall bar
+// ══════════════════════════════════════════════
+const TALL_TASK_SET_30 = new Set(['blk_in', '족장설치', '뒤집기', 'blk_out']);
+const FIXED_ROW_TASKS  = ['관철', '덕트', '전장', '도장', '배선'];
+
+function render30STGRows(group, dates, dateIndex) {
+  const groupTasks = ganttData.filter(t => t.area === group);
+  const N = FIXED_ROW_TASKS.length; // 5
+
+  // ① tall bar 열 범위 계산 (겹치면 선착순 처리)
+  const tallBarsInfo = [];
+  const blockedCols  = new Set();
+
+  [...ganttData]
+    .filter(t => t.area === group && TALL_TASK_SET_30.has(t.task))
+    .sort((a, b) => _parseLocalDate(a.s) - _parseLocalDate(b.s))
+    .forEach(task => {
+      const si = dateIndex[task.s];
+      if (si === undefined) return;
+      const endTs = _parseLocalDate(task.e).getTime();
+      let span = 0;
+      for (let i = si; i < dates.length; i++) {
+        if (dates[i].getTime() > endTs) break;
+        span++;
+      }
+      if (span < 1) span = 1;
+      for (let i = si; i < si + span; i++) {
+        if (blockedCols.has(i)) return; // 겹침 → 건너뜀
+      }
+      for (let i = si; i < si + span; i++) blockedCols.add(i);
+      tallBarsInfo.push({ colStart: si, colSpan: span, task });
+    });
+  tallBarsInfo.sort((a, b) => a.colStart - b.colStart);
+
+  // ② fixed-row task map
+  const fixedMap = {};
+  for (const wc of FIXED_ROW_TASKS) {
+    fixedMap[wc] = groupTasks.find(t => t.task === wc) || null;
+  }
+
+  // ③ 빈 셀 생성
+  function emptyTd(col, lane) {
+    const d    = dates[col];
+    const dstr = _dateKey(d);
+    const cls  = [];
+    if (d.getDay() === 6) cls.push('saturday');
+    if (dstr === TODAY)   cls.push('today');
+    return `<td class="${cls.join(' ')}" data-date="${dstr}" data-area="${group}" data-lane="${lane}"></td>`;
+  }
+
+  // ④ 막대 셀 생성 (rowspan 옵션)
+  function barTd30(task, colSpan, rowspan) {
+    const color     = colorMap[task.task] || '#94a3b8';
+    const labelSize = colSpan < 2 ? '7.5px' : colSpan < 3 ? '9px' : '10.5px';
+    const title     = IS_EDITABLE
+      ? `${task.proj} · ${task.area} · ${task.gj} · ${task.task}\n${task.s} ~ ${task.e}`
+      : `🔒 편집 권한 없음\n${task.proj} · ${task.area} · ${task.gj} · ${task.task}\n${task.s} ~ ${task.e}`;
+    const rsAttr = rowspan > 1 ? ` rowspan="${rowspan}"` : '';
+    return `<td class="bar" colspan="${colSpan}"${rsAttr}
+              style="background:${color};"
+              data-task-id="${task.id}" data-start="${task.s}"
+              data-end="${task.e}" data-area="${task.area}"
+              title="${title}">
+              <span style="font-size:${labelSize};">${task.task}</span></td>`;
+  }
+
+  // ⑤ task의 non-blocked 연속 구간 목록
+  function getSegments(task) {
+    const si = dateIndex[task.s];
+    if (si === undefined) return [];
+    const endTs = _parseLocalDate(task.e).getTime();
+    const segs = [];
+    let segStart = null, segLen = 0;
+    for (let i = si; i < dates.length; i++) {
+      if (dates[i].getTime() > endTs) break;
+      if (!blockedCols.has(i)) {
+        if (segStart === null) { segStart = i; segLen = 0; }
+        segLen++;
+      } else {
+        if (segLen > 0) { segs.push({ start: segStart, span: segLen }); segStart = null; segLen = 0; }
+      }
+    }
+    if (segLen > 0) segs.push({ start: segStart, span: segLen });
+    return segs;
+  }
+
+  // ⑥ 5행 HTML 생성
+  let html = '';
+  const projs = [...new Set(groupTasks.map(t => t.proj))];
+
+  for (let rowIdx = 0; rowIdx < N; rowIdx++) {
+    html += '<tr>';
+
+    // 첫 행: area-cell rowspan=N
+    if (rowIdx === 0) {
+      html += `<td class="area-cell" rowspan="${N}">
+        <div style="font-weight:700;font-size:12px;">${group}</div>
+        <div style="font-size:9px;color:#94a3b8;margin-top:2px;">${projs.join(', ')}</div>
+      </td>`;
+    }
+
+    const task = fixedMap[FIXED_ROW_TASKS[rowIdx]];
+    const segs = task ? getSegments(task) : [];
+    let sIdx  = 0;
+    let col   = 0;
+    let tbIdx = 0;
+
+    while (col < dates.length) {
+      // 첫 행: tall bar 삽입 (rowspan=N)
+      if (rowIdx === 0 && tbIdx < tallBarsInfo.length && tallBarsInfo[tbIdx].colStart === col) {
+        const tb = tallBarsInfo[tbIdx++];
+        html += barTd30(tb.task, tb.colSpan, N);
+        col += tb.colSpan;
+        continue;
+      }
+      // blocked col → 건너뜀 (tall bar rowspan 점유)
+      if (blockedCols.has(col)) { col++; continue; }
+      // task 막대 segment
+      if (sIdx < segs.length && segs[sIdx].start === col) {
+        const seg = segs[sIdx++];
+        html += barTd30(task, seg.span, 1);
+        col += seg.span;
+        continue;
+      }
+      // 빈 셀
+      html += emptyTd(col, rowIdx);
+      col++;
+    }
+
+    html += '</tr>';
+  }
+  return html;
+}
+
+// ══════════════════════════════════════════════
 // 메인 렌더링
 // ══════════════════════════════════════════════
 function render() {
@@ -428,9 +565,9 @@ function render() {
   const dateIndex = {};
   dates.forEach((d,i) => { dateIndex[_dateKey(d)] = i; });
 
-  // 그룹별 레인 분배 (겹치면 별도 레인)
+  // 그룹별 레인 분배 (겹치면 별도 레인) — 30stg 모드는 고정 5행이므로 불필요
   const groupLanes = {};
-  groups.forEach(g => {
+  if (ROW_MODE !== '30stg') groups.forEach(g => {
     const tasks = ganttData.filter(t => t[groupKey] === g);
     tasks.sort((x,y) => _parseLocalDate(x.s) - _parseLocalDate(y.s));
     const lanes = [];
@@ -499,32 +636,71 @@ function render() {
 
   // 바디
   groups.forEach(group => {
-    const lanes = groupLanes[group];
-    lanes.forEach((lane, laneIdx) => {
-      html += '<tr>';
-      if (laneIdx === 0) {
-        let headerHtml;
-        if (ROW_MODE === 'ship') {
-          // 호선 모드: 호선명만 표시
-          headerHtml = `<div style="font-weight:700; font-size:12px;">${group}</div>`;
-        } else {
-          // 구역 모드: 구역 + 해당 구역의 호선 리스트
-          const projs = [...new Set(ganttData.filter(t => t.area === group).map(t => t.proj))];
-          headerHtml = `
-            <div style="font-weight:700; font-size:12px;">${group}</div>
-            <div style="font-size:9px; color:#94a3b8; margin-top:2px;">${projs.join(', ')}</div>
-          `;
+    if (ROW_MODE === '30stg') {
+      // 30STG 전용: 고정 5행 레이아웃 (관철/덕트/전장/도장/배선 + tall bars)
+      html += render30STGRows(group, dates, dateIndex);
+    } else {
+      const lanes = groupLanes[group];
+      lanes.forEach((lane, laneIdx) => {
+        html += '<tr>';
+        if (laneIdx === 0) {
+          let headerHtml;
+          if (ROW_MODE === 'ship') {
+            // 호선 모드: 호선명만 표시
+            headerHtml = `<div style="font-weight:700; font-size:12px;">${group}</div>`;
+          } else {
+            // 구역 모드: 구역 + 해당 구역의 호선 리스트
+            const projs = [...new Set(ganttData.filter(t => t.area === group).map(t => t.proj))];
+            headerHtml = `
+              <div style="font-weight:700; font-size:12px;">${group}</div>
+              <div style="font-size:9px; color:#94a3b8; margin-top:2px;">${projs.join(', ')}</div>
+            `;
+          }
+          html += `<td class="area-cell" rowspan="${lanes.length}">${headerHtml}</td>`;
         }
-        html += `<td class="area-cell" rowspan="${lanes.length}">${headerHtml}</td>`;
-      }
 
-      let cursor = 0;
-      lane.sort((a,b) => _parseLocalDate(a.s) - _parseLocalDate(b.s));
-      for (const task of lane) {
-        const startIdx = dateIndex[task.s];
-        if (startIdx === undefined) continue;
+        let cursor = 0;
+        lane.sort((a,b) => _parseLocalDate(a.s) - _parseLocalDate(b.s));
+        for (const task of lane) {
+          const startIdx = dateIndex[task.s];
+          if (startIdx === undefined) continue;
 
-        while (cursor < startIdx) {
+          while (cursor < startIdx) {
+            const d = dates[cursor];
+            const dstr = _dateKey(d);
+            const cls = [];
+            if (d.getDay() === 6) cls.push('saturday');
+            if (dstr === TODAY) cls.push('today');
+            html += `<td class="${cls.join(' ')}" data-date="${dstr}" data-area="${group}" data-lane="${laneIdx}"></td>`;
+            cursor++;
+          }
+
+          let span = 0;
+          const endTs = _parseLocalDate(task.e).getTime();
+          for (let i = startIdx; i < dates.length; i++) {
+            if (dates[i].getTime() > endTs) break;
+            span++;
+          }
+          if (span < 1) span = 1;
+
+          const barColor  = colorMap[task.task] || '#94a3b8';
+          const labelSize = span < 2 ? '7.5px' : span < 3 ? '9px' : '10.5px';
+          // 호선 모드: "작업내용 / 구역", 구역 모드: "작업내용"
+          const labelText = ROW_MODE === 'ship'
+            ? `${task.task} / ${task.area}`
+            : task.task;
+          const label = `<span style="font-size:${labelSize};">${labelText}</span>`;
+          const title = IS_EDITABLE
+            ? `${task.proj} · ${task.area} · ${task.gj} · ${task.task}\n${task.s} ~ ${task.e}`
+            : `🔒 편집 권한 없음\n${task.proj} · ${task.area} · ${task.gj} · ${task.task}\n${task.s} ~ ${task.e}`;
+          html += `<td class="bar" colspan="${span}" style="background:${barColor};"
+                     data-task-id="${task.id}" data-start="${task.s}"
+                     data-end="${task.e}" data-area="${task.area}"
+                     title="${title}">${label}</td>`;
+          cursor = startIdx + span;
+        }
+
+        while (cursor < dates.length) {
           const d = dates[cursor];
           const dstr = _dateKey(d);
           const cls = [];
@@ -533,43 +709,9 @@ function render() {
           html += `<td class="${cls.join(' ')}" data-date="${dstr}" data-area="${group}" data-lane="${laneIdx}"></td>`;
           cursor++;
         }
-
-        let span = 0;
-        const endTs = _parseLocalDate(task.e).getTime();
-        for (let i = startIdx; i < dates.length; i++) {
-          if (dates[i].getTime() > endTs) break;
-          span++;
-        }
-        if (span < 1) span = 1;
-
-        const barColor  = colorMap[task.task] || '#94a3b8';
-        const labelSize = span < 2 ? '7.5px' : span < 3 ? '9px' : '10.5px';
-        // 호선 모드: "작업내용 / 구역", 구역 모드: "작업내용"
-        const labelText = ROW_MODE === 'ship'
-          ? `${task.task} / ${task.area}`
-          : task.task;
-        const label = `<span style="font-size:${labelSize};">${labelText}</span>`;
-        const title = IS_EDITABLE
-          ? `${task.proj} · ${task.area} · ${task.gj} · ${task.task}\n${task.s} ~ ${task.e}`
-          : `🔒 편집 권한 없음\n${task.proj} · ${task.area} · ${task.gj} · ${task.task}\n${task.s} ~ ${task.e}`;
-        html += `<td class="bar" colspan="${span}" style="background:${barColor};"
-                   data-task-id="${task.id}" data-start="${task.s}"
-                   data-end="${task.e}" data-area="${task.area}"
-                   title="${title}">${label}</td>`;
-        cursor = startIdx + span;
-      }
-
-      while (cursor < dates.length) {
-        const d = dates[cursor];
-        const dstr = _dateKey(d);
-        const cls = [];
-        if (d.getDay() === 6) cls.push('saturday');
-        if (dstr === TODAY) cls.push('today');
-        html += `<td class="${cls.join(' ')}" data-date="${dstr}" data-area="${group}" data-lane="${laneIdx}"></td>`;
-        cursor++;
-      }
-      html += '</tr>';
-    });
+        html += '</tr>';
+      });
+    }
   });
   html += '</tbody>';
   gridEl.innerHTML = html;
