@@ -460,6 +460,13 @@ def init_tables() -> bool:
             """)
         conn.commit()
 
+        # ALTER TABLE 추가 컬럼 NULL → 0 업데이트 (기존 행은 NULL로 남아있을 수 있음)
+        for col in _ALTER_INOUT_COLS:
+            cur.execute(f"UPDATE lq_meet_ref_inout SET [{col}]=0 WHERE [{col}] IS NULL")
+        for col in _ALTER_50STG_COLS:
+            cur.execute(f"UPDATE lq_meet_ref_50stg SET [{col}]=0 WHERE [{col}] IS NULL")
+        conn.commit()
+
         # 블럭명 오타 수정 마이그레이션 (M31OS/M31OP → M310S/M310P)
         for old_name, new_name in [("M31OS", "M310S"), ("M31OP", "M310P")]:
             cur.execute("UPDATE lq_meet_ref_30stg      SET block_no=? WHERE block_no=?", (new_name, old_name))

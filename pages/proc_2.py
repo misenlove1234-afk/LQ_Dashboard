@@ -198,7 +198,7 @@ TAB_OPTIONS = [
     "📊  종합 공정 현황",
     "🗂️  구역별 상세 현황",
     "⚙️  기준정보",
-    "📋  공정회의록",
+    "🖩  데이터 계산",
 ]
 
 
@@ -1151,7 +1151,7 @@ def render():
             st.caption(f"💡 현재 접속자 ID: `{current_user}` — 이 값을 사용자ID에 입력하면 현재 접속자에게 권한 부여")
 
     # ══════════════════════════════════════════════
-    #  Tab 4: 공정회의록
+    #  Tab 4: 데이터 계산
     # ══════════════════════════════════════════════
     elif tab_choice == tab_options[3]:
         from pages.proc_2_meeting import render_meeting_tab

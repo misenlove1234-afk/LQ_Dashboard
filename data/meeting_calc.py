@@ -19,6 +19,22 @@ from data.meeting_ref_data import (
 
 logger = logging.getLogger(__name__)
 
+
+def _safe_int(val, default: int = 0) -> int:
+    """DB NULL(NaN) 포함 모든 값을 안전하게 int로 변환"""
+    if val is None:
+        return default
+    try:
+        if pd.isna(val):
+            return default
+    except (TypeError, ValueError):
+        pass
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return default
+
+
 # ═══════════════════════════════════════════════════════════════
 # DDL
 # ═══════════════════════════════════════════════════════════════
@@ -170,7 +186,10 @@ def calc_30stg(vessel_no: str, vessel_type: str) -> dict:
 
         blk_ref  = ref.get(block_no, {})
         exc_blocks_map = {
-            s["work_code"]: [b.strip() for b in str(s.get("exception_blocks","")).split(",") if b.strip()]
+            s["work_code"]: [
+                b.strip() for b in str(s.get("exception_blocks") or "").split(",")
+                if b.strip() and b.strip() != "nan"
+            ]
             for s in seq
         }
 
@@ -197,10 +216,10 @@ def calc_30stg(vessel_no: str, vessel_type: str) -> dict:
                 continue
 
             if dur_type == "fixed":
-                days = max(step.get("fixed_days", 0), 0)
+                days = max(_safe_int(step.get("fixed_days")), 0)
             elif dur_type == "variable":
                 ref_col = step.get("ref_col", "")
-                days = int(blk_ref.get(ref_col, 0)) if ref_col else 0
+                days = _safe_int(blk_ref.get(ref_col)) if ref_col and str(ref_col) not in ("nan", "") else 0
             else:
                 days = 0
 
@@ -257,7 +276,7 @@ def calc_inout(vessel_no: str, vessel_type: str, anchor50: dict) -> dict:
         prev_end = None
 
         for col in _INOUT_COLS:
-            days = int(row.get(col, 0))
+            days = _safe_int(row.get(col))
             if days == 0:
                 continue
 
@@ -340,7 +359,7 @@ def calc_50stg(
             if deck == "UPP-DK":
                 continue
 
-            days = int(ref.get(deck, {}).get(ref_col, 0)) if ref_col else 0
+            days = _safe_int(ref.get(deck, {}).get(ref_col)) if ref_col and str(ref_col) not in ("nan", "") else 0
             if days == 0:
                 continue
 
