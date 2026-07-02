@@ -5,7 +5,6 @@ from datetime import datetime
 import base64
 import os
 import logging
-import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +42,11 @@ def load_icon(name):
             return result
     return ""
 
-def safe(fn):
+def safe(fn, context: str = "home_card"):
     try: return fn()
     except Exception as e:
+        from utils.error_log import log_error
+        log_error(context, e)
         return {}
 
 def fv(v, fmt=".1f", suffix="", na="-"):
@@ -578,10 +579,10 @@ def render_home():
     """)
 
     # ── 데이터 로딩 ──
-    dp1  = safe(_card_proc1)
-    dp3  = safe(_card_proc3)
-    dp4  = safe(_card_proc4)
-    dp2i = safe(_card_proc2_delays)
+    dp1  = safe(_card_proc1, "home:proc1_card")
+    dp3  = safe(_card_proc3, "home:proc3_card")
+    dp4  = safe(_card_proc4, "home:proc4_card")
+    dp2i = safe(_card_proc2_delays, "home:proc2_delay_card")
 
     # ══════════════════════════════════════════════════════════
     #  [1행] 2칸: 특수선 달성률 / 지연 작업 현황
@@ -719,6 +720,33 @@ def render_home():
 
     st.html('<div class="footer"><span style="color:#fff;">L</span><span style="color:#fff;">Q</span> <span style="color:#38BDF8;">A</span><span style="color:#fff;">ll</span> <span style="color:#38BDF8;">I</span><span style="color:#fff;">n</span> <span style="color:#fff;">O</span><span style="color:#fff;">ne</span> v2.0 &nbsp;|&nbsp; Living Quarter Department</div>')
 
+    _render_admin_error_log()
+
+
+# ══════════════════════════════════════════════════════════
+#  6-1. 관리자 전용 오류 로그 조회 (proc_2에서 관리자 로그인 시 노출)
+# ══════════════════════════════════════════════════════════
+def _render_admin_error_log():
+    if not st.session_state.get("is_admin"):
+        return
+    from utils.error_log import read_error_logs
+
+    with st.expander("🔧 오류 로그 조회 (관리자)", expanded=False):
+        df_err = read_error_logs(limit=200)
+        if df_err.empty:
+            st.caption("기록된 오류가 없습니다.")
+            return
+        st.caption(f"최근 {len(df_err)}건 (최신순) — 오류코드로 상세 내역을 확인하세요.")
+        st.dataframe(
+            df_err[["code", "time", "context", "error_type", "message"]],
+            use_container_width=True, hide_index=True, height=250,
+        )
+        picked = st.selectbox("오류코드 선택 (상세 트레이스백 보기)",
+                               [""] + df_err["code"].tolist(), key="home_err_code_pick")
+        if picked:
+            row = df_err[df_err["code"] == picked].iloc[0]
+            st.code(row["traceback"] or "(트레이스백 없음)", language="text")
+
 
 # ══════════════════════════════════════════════════════════
 #  7. 하위 메뉴 팩토리 함수
@@ -730,8 +758,12 @@ def make_proc_page_func(key, name, icon):
             mod = __import__(f"pages.{key}", fromlist=["render"])
             mod.render()
         except Exception as e:
-            logger.error("공정 페이지 렌더링 오류 (%s): %s\n%s", key, e, traceback.format_exc())
-            st.error("오류가 발생했습니다. 관리자에게 문의해 주세요.")
+            from utils.error_log import log_error, mask_secrets
+            from utils.access_log import get_client_user
+            code = log_error(f"공정 페이지 렌더링 오류 ({key})", e, get_client_user())
+            st.error(f"오류가 발생했습니다. (오류코드: {code}) 관리자에게 문의해 주세요.")
+            if st.session_state.get("is_admin"):
+                st.caption(f"🔧 관리자 상세 — {type(e).__name__}: {mask_secrets(str(e))}")
     return _render
 
 # ══════════════════════════════════════════════════════════
