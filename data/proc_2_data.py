@@ -16,11 +16,14 @@
 
 import re
 import json
+import logging
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 
 from utils.db import run_query, execute_query
+
+logger = logging.getLogger(__name__)
 
 
 # ──────────────────────────────────────────────
@@ -764,3 +767,38 @@ def load_tapjae_dates() -> pd.DataFrame:
     # 호선당 1행만 (중복 시 가장 이른 날짜 유지)
     df = df.sort_values('탑재착수').drop_duplicates(subset=['프로젝트'], keep='first')
     return df[['프로젝트', '탑재착수']].reset_index(drop=True)
+
+
+# ══════════════════════════════════════════════
+#  11. 원본 DB 직접 조회 (진단용 뷰어)
+# ══════════════════════════════════════════════
+# 화이트리스트만 조회 허용 (테이블명을 쿼리에 직접 사용하므로 SQL Injection 방지 목적)
+BROWSE_TABLES = {
+    "lq_proc2_1 (공정 현황 원본)":           "lq_proc2_1",
+    "lq_meet_schedule (계산된 일정)":         "lq_meet_schedule",
+    "lq_meet_vessel (호선 정보)":             "lq_meet_vessel",
+    "lq_meet_anchor_30stg (30STG 앵커)":      "lq_meet_anchor_30stg",
+    "lq_meet_anchor_50stg (50STG 앵커)":      "lq_meet_anchor_50stg",
+    "lq_meet_ref_30stg (30STG 소요일 기준)":  "lq_meet_ref_30stg",
+    "lq_meet_ref_50stg (50STG 소요일 기준)":  "lq_meet_ref_50stg",
+    "lq_meet_ref_inout (In/Out 소요일 기준)": "lq_meet_ref_inout",
+    "lq_meet_ref_sequence (공종 순서)":       "lq_meet_ref_sequence",
+    "lq_meet_ref_deck_order (데크 순서)":     "lq_meet_ref_deck_order",
+    "lq_meet_ref_block_deck (블럭-데크 매핑)": "lq_meet_ref_block_deck",
+    "lq_meet_logic_rules (로직 규칙)":        "lq_meet_logic_rules",
+    "lq_meet_calendar (비작업일 캘린더)":     "lq_meet_calendar",
+}
+
+
+@st.cache_data(ttl=60, max_entries=20)
+def browse_table(label: str, limit: int = 5000) -> pd.DataFrame:
+    """진단용 원본 DB 조회 — BROWSE_TABLES 화이트리스트에 있는 테이블만 조회 가능."""
+    table = BROWSE_TABLES.get(label)
+    if not table:
+        return pd.DataFrame()
+    limit = max(1, min(int(limit), 20000))
+    try:
+        return run_query(f"SELECT TOP {limit} * FROM [{table}]")
+    except Exception:
+        logger.error("DB 조회 실패: %s", table, exc_info=True)
+        return pd.DataFrame()
