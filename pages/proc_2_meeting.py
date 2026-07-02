@@ -260,7 +260,7 @@ def render_meeting_tab(current_user: str = "", is_admin: bool = False):
     if vessels_df.empty:
         st.info(
             "등록된 호선이 없습니다. "
-            "**기준정보 탭 → 앵커 이벤트** 에서 호선을 먼저 등록해 주세요."
+            "좌측 메뉴의 **기준정보 페이지 → 앵커 이벤트** 에서 호선을 먼저 등록해 주세요."
         )
         return
 
@@ -401,3 +401,18 @@ def render_meeting_tab(current_user: str = "", is_admin: bool = False):
         except Exception as e:
             logger.error("In/Outside 테이블 오류: %s\n%s", e, traceback.format_exc())
             st.error("테이블 생성 중 오류가 발생했습니다.")
+
+
+# ═══════════════════════════════════════════════════════════════
+# 독립 페이지 진입점 (app.py 라우팅용)
+# ═══════════════════════════════════════════════════════════════
+def render():
+    from utils.access_log import get_client_user
+    from utils.admin import render_admin_login
+
+    current_user = get_client_user()
+    with st.sidebar:
+        st.markdown("<h3 style='color:#ffffff;'>🖩 공정회의록</h3>", unsafe_allow_html=True)
+        render_admin_login(key_prefix="meeting")
+
+    render_meeting_tab(current_user=current_user, is_admin=st.session_state.get("is_admin", False))

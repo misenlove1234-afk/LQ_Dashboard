@@ -90,7 +90,7 @@ def render_gantt_tab(current_user: str, is_admin: bool):
 
     vessels_df = get_vessels()
     if vessels_df.empty:
-        st.info("💡 등록된 호선이 없습니다. '기준정보' 탭에서 호선을 먼저 등록해 주세요.")
+        st.info("💡 등록된 호선이 없습니다. 좌측 메뉴의 **'기준정보' 페이지**에서 호선을 먼저 등록해 주세요.")
         return
 
     # ── 호선 선택 + STG 필터 ──
@@ -124,7 +124,7 @@ def render_gantt_tab(current_user: str, is_admin: bool):
         with col_info:
             st.info(
                 f"**{vessel_no}** — **{stg_filter}** 에 해당하는 계산된 일정이 없습니다. "
-                "'데이터 계산' 탭에서 먼저 **원클릭 계산**을 실행해 주세요."
+                "좌측 메뉴의 **'공정회의록 작성, 수정' 페이지**에서 먼저 **원클릭 계산**을 실행해 주세요."
             )
         return
 
@@ -189,3 +189,18 @@ def render_gantt_tab(current_user: str, is_admin: bool):
         except Exception as e:
             logger.error("JSON 업로드 오류: %s\n%s", e, traceback.format_exc())
             st.error("오류가 발생했습니다. 관리자에게 문의해 주세요.")
+
+
+# ═══════════════════════════════════════════════════════════════
+# 독립 페이지 진입점 (app.py 라우팅용)
+# ═══════════════════════════════════════════════════════════════
+def render():
+    from utils.access_log import get_client_user
+    from utils.admin import render_admin_login
+
+    current_user = get_client_user()
+    with st.sidebar:
+        st.markdown("<h3 style='color:#ffffff;'>📅 간트차트</h3>", unsafe_allow_html=True)
+        render_admin_login(key_prefix="gantt")
+
+    render_gantt_tab(current_user=current_user, is_admin=st.session_state.get("is_admin", False))

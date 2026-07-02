@@ -98,7 +98,15 @@ PROCESS_SUBMENUS = [
     ("proc_4", "전장 결선 자재 현황",    "🔌"),
 ]
 
-SIDEBAR_PAGES = {"proc_2", "proc_3", "proc_4"}
+# 사곡 거주구 제작 현황(proc_2)에서 분리된 관리자용 서브 기능 — 별도 페이지로 관리
+PROC2_SUBPAGES = [
+    ("proc_2_ref",     "기준정보",             "⚙️"),
+    ("proc_2_meeting", "공정회의록 작성, 수정", "🖩"),
+    ("proc_2_gantt",   "간트차트",             "📅"),
+]
+
+SIDEBAR_PAGES = {"proc_2", "proc_3", "proc_4",
+                 "proc_2_ref", "proc_2_meeting", "proc_2_gantt"}
 
 
 # ══════════════════════════════════════════════════════════
@@ -771,11 +779,13 @@ def make_proc_page_func(key, name, icon):
 # ══════════════════════════════════════════════════════════
 page_home_obj = st.Page(render_home, title="홈", url_path="home", default=True)
 
-proc_page_objs = [st.Page(make_proc_page_func(k, n, i), title=n, url_path=k) for k, n, i in PROCESS_SUBMENUS]
+proc_page_objs      = [st.Page(make_proc_page_func(k, n, i), title=n, url_path=k) for k, n, i in PROCESS_SUBMENUS]
+proc2_sub_page_objs = [st.Page(make_proc_page_func(k, n, i), title=n, url_path=k) for k, n, i in PROC2_SUBPAGES]
 
 pages = {
     "메인": [page_home_obj],
     "공정 관리 상세": proc_page_objs,
+    "사곡 거주구 상세 관리": proc2_sub_page_objs,
 }
 
 pg = st.navigation(pages, position="sidebar")

@@ -823,3 +823,24 @@ def render_ref_tab():
     with tabs[5]: _tab_calendar()
     with tabs[6]: _tab_rules()
     with tabs[7]: _tab_anchor_template()
+
+
+# ═══════════════════════════════════════════════════════════════
+# 독립 페이지 진입점 (app.py 라우팅용)
+# ═══════════════════════════════════════════════════════════════
+def render():
+    from utils.access_log import get_client_user
+    from utils.admin import render_admin_login
+
+    current_user = get_client_user()
+    with st.sidebar:
+        st.markdown("<h3 style='color:#ffffff;'>⚙️ 기준정보</h3>", unsafe_allow_html=True)
+        render_admin_login(key_prefix="ref")
+
+    st.markdown("##### 🗂️ 기준정보 관리")
+    if not st.session_state.get("is_admin"):
+        st.warning("⚠️ 관리자 권한이 필요합니다. 사이드바에서 관리자 비밀번호를 입력해 주세요.")
+        return
+
+    render_ref_tab()
+    st.caption(f"💡 현재 접속자 ID: `{current_user}` — 이 값을 사용자ID에 입력하면 현재 접속자에게 권한 부여")

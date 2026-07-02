@@ -15,7 +15,6 @@
 5. 위젯 key는 반드시 'proc2_' 로 시작."
 """
 
-import os
 import io
 import json
 import streamlit as st
@@ -48,6 +47,7 @@ from data.proc_2_data import (
     BROWSE_TABLES,
 )
 from utils.access_log import get_client_user
+from utils.admin import render_admin_login
 
 
 # ══════════════════════════════════════════════
@@ -199,9 +199,6 @@ def _render_gantt_component(tasks: list, is_editable: bool = False,
 TAB_OPTIONS = [
     "📊  종합 공정 현황",
     "🗂️  구역별 상세 현황",
-    "⚙️  기준정보",
-    "🖩  초기 데이터 생성",
-    "📅  간트차트",
 ]
 
 
@@ -367,7 +364,6 @@ def render():
         return
 
     today = pd.Timestamp(datetime.now().date())
-    ADMIN_PASSWORD  = os.getenv("ADMIN_PASSWORD", "admin1234")
     current_user    = get_client_user()
     is_editable     = check_gantt_permission(current_user)
 
@@ -443,16 +439,7 @@ def render():
 
         # 관리자
         st.divider()
-        st.write("8. 🔐 관리자")
-        admin_input = st.text_input("비밀번호", type="password", key="proc2_admin_pw")
-        if admin_input == ADMIN_PASSWORD:
-            st.session_state["is_admin"] = True
-            st.success("✅ 관리자 모드")
-        elif admin_input:
-            st.session_state["is_admin"] = False
-            st.error("❌ 비밀번호 오류")
-        else:
-            st.session_state.setdefault("is_admin", False)
+        render_admin_login(key_prefix="proc2", label="8. 🔐 관리자")
 
         st.divider()
         # PDF 일괄 출력 — 진행 중 호선(현재 화면 필터 기준)을 기본값으로 다이얼로그 오픈
@@ -1140,32 +1127,6 @@ def render():
                         st.rerun()
                     else:
                         st.warning("사용자ID와 이름을 모두 입력해주세요.")
-
-    # ══════════════════════════════════════════════
-    #  Tab 3: 기준정보 (관리자 전용)
-    # ══════════════════════════════════════════════
-    elif tab_choice == tab_options[2]:
-        st.markdown("##### 🗂️ 기준정보 관리")
-        if not st.session_state.get("is_admin"):
-            st.warning("⚠️ 관리자 권한이 필요합니다. 사이드바에서 관리자 비밀번호를 입력해 주세요.")
-        else:
-            from pages.proc_2_ref import render_ref_tab
-            render_ref_tab()
-            st.caption(f"💡 현재 접속자 ID: `{current_user}` — 이 값을 사용자ID에 입력하면 현재 접속자에게 권한 부여")
-
-    # ══════════════════════════════════════════════
-    #  Tab 4: 초기 데이터 생성
-    # ══════════════════════════════════════════════
-    elif tab_choice == tab_options[3]:
-        from pages.proc_2_meeting import render_meeting_tab
-        render_meeting_tab(current_user=current_user, is_admin=st.session_state.get("is_admin", False))
-
-    # ══════════════════════════════════════════════
-    #  Tab 5: 간트차트 (lq_meet_schedule 전용)
-    # ══════════════════════════════════════════════
-    elif tab_choice == tab_options[4]:
-        from pages.proc_2_gantt import render_gantt_tab
-        render_gantt_tab(current_user=current_user, is_admin=st.session_state.get("is_admin", False))
 
     # ══════════════════════════════════════════════
     #  최하단: DB 원본 조회 (진단용, 탭과 무관하게 항상 표시)
