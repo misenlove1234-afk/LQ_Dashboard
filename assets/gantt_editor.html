@@ -447,9 +447,15 @@ function render30STGRows(group, dates, dateIndex) {
   tallBarsInfo.sort((a, b) => a.colStart - b.colStart);
 
   // ② fixed-row task map
+  //   원본 DB의 작업내용이 '관철화기'처럼 상세 명칭인 경우도 매칭되도록
+  //   공종(gj)·작업내용(task) 완전일치 또는 접두 일치를 모두 허용
+  function matchesFixedRow(t, wc) {
+    return t.task === wc || t.gj === wc ||
+           t.task.startsWith(wc) || (t.gj && t.gj.startsWith(wc));
+  }
   const fixedMap = {};
   for (const wc of FIXED_ROW_TASKS) {
-    fixedMap[wc] = groupTasks.find(t => t.task === wc) || null;
+    fixedMap[wc] = groupTasks.find(t => matchesFixedRow(t, wc)) || null;
   }
 
   // ③ 빈 셀 생성
