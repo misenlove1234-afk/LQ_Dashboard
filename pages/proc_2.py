@@ -584,6 +584,27 @@ def render():
 
     st.markdown('<hr style="border-color:rgba(56,189,248,0.15);">', unsafe_allow_html=True)
 
+    # ── 관리자 서브 기능 바로가기 (기준정보 / 공정회의록 / 간트차트는 별도 페이지) ──
+    st.markdown(
+        """
+        <div style="display:flex; gap:0.6rem; flex-wrap:wrap; margin-bottom:1rem;">
+            <a href="/proc_2_ref" target="_self" style="flex:1; min-width:160px; text-align:center;
+                padding:0.55rem 1rem; border-radius:8px; background:rgba(56,189,248,0.12);
+                border:1px solid rgba(56,189,248,0.35); color:#38BDF8; font-weight:600;
+                font-size:0.85rem; text-decoration:none;">⚙️ 기준정보</a>
+            <a href="/proc_2_meeting" target="_self" style="flex:1; min-width:160px; text-align:center;
+                padding:0.55rem 1rem; border-radius:8px; background:rgba(56,189,248,0.12);
+                border:1px solid rgba(56,189,248,0.35); color:#38BDF8; font-weight:600;
+                font-size:0.85rem; text-decoration:none;">🖩 공정회의록 작성, 수정</a>
+            <a href="/proc_2_gantt" target="_self" style="flex:1; min-width:160px; text-align:center;
+                padding:0.55rem 1rem; border-radius:8px; background:rgba(56,189,248,0.12);
+                border:1px solid rgba(56,189,248,0.35); color:#38BDF8; font-weight:600;
+                font-size:0.85rem; text-decoration:none;">📅 간트차트</a>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     # st.tabs()는 rerun 시 선택이 초기화되므로 radio + session_state로 대체.
     # 위젯을 조건부로 렌더링하면 widget key가 정리될 수 있으므로 위젯 key와
     # 영속 key(proc2_tab_choice)를 분리한다.
