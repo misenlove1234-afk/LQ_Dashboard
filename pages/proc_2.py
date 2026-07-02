@@ -15,6 +15,7 @@
 5. 위젯 key는 반드시 'proc2_' 로 시작."
 """
 
+import os
 import io
 import json
 import streamlit as st
@@ -43,11 +44,8 @@ from data.proc_2_data import (
     add_new_task,
     generate_gantt_print_html,
     load_tapjae_dates,
-    browse_table,
-    BROWSE_TABLES,
 )
 from utils.access_log import get_client_user
-from utils.admin import render_admin_login
 
 
 # ══════════════════════════════════════════════
@@ -196,10 +194,7 @@ def _render_gantt_component(tasks: list, is_editable: bool = False,
 # ══════════════════════════════════════════════
 #  탭 상수
 # ══════════════════════════════════════════════
-TAB_OPTIONS = [
-    "📊  종합 공정 현황",
-    "🗂️  구역별 상세 현황",
-]
+TAB_OPTIONS = ["종합 공정 현황", "구역별 상세 현황"]
 
 
 # ══════════════════════════════════════════════
@@ -364,6 +359,7 @@ def render():
         return
 
     today = pd.Timestamp(datetime.now().date())
+    ADMIN_PASSWORD  = os.getenv("ADMIN_PASSWORD", "admin1234")
     current_user    = get_client_user()
     is_editable     = check_gantt_permission(current_user)
 
@@ -439,7 +435,16 @@ def render():
 
         # 관리자
         st.divider()
-        render_admin_login(key_prefix="proc2", label="8. 🔐 관리자")
+        st.write("8. 🔐 관리자")
+        admin_input = st.text_input("비밀번호", type="password", key="proc2_admin_pw")
+        if admin_input == ADMIN_PASSWORD:
+            st.session_state["is_admin"] = True
+            st.success("✅ 관리자 모드")
+        elif admin_input:
+            st.session_state["is_admin"] = False
+            st.error("❌ 비밀번호 오류")
+        else:
+            st.session_state.setdefault("is_admin", False)
 
         st.divider()
         # PDF 일괄 출력 — 진행 중 호선(현재 화면 필터 기준)을 기본값으로 다이얼로그 오픈
@@ -1127,99 +1132,4 @@ def render():
                         st.rerun()
                     else:
                         st.warning("사용자ID와 이름을 모두 입력해주세요.")
-
-    # ══════════════════════════════════════════════
-    #  최하단: DB 원본 조회 (진단용, 탭과 무관하게 항상 표시)
-    # ══════════════════════════════════════════════
-    _render_db_browser()
-
-
-def _render_db_browser():
-    """페이지 최하단 — DB 테이블 원본을 엑셀처럼 필터링해 조회하는 진단용 표."""
-    st.divider()
-    with st.expander("🔍 DB 원본 조회 (진단용)", expanded=False):
-        col_tbl, col_limit, col_refresh = st.columns([3, 1, 1])
-        with col_tbl:
-            table_label = st.selectbox(
-                "조회 테이블", list(BROWSE_TABLES.keys()), key="proc2_browse_table",
-            )
-        with col_limit:
-            row_limit = st.number_input(
-                "최대 행수", min_value=100, max_value=20000,
-                value=2000, step=500, key="proc2_browse_limit",
-            )
-        with col_refresh:
-            st.write("")
-            st.write("")
-            if st.button("🔄 새로고침", key="proc2_browse_refresh", use_container_width=True):
-                browse_table.clear()
-
-        try:
-            raw_df = browse_table(table_label, int(row_limit))
-        except Exception:
-            logger.error("DB 원본 조회 실패", exc_info=True)
-            st.error("조회 중 오류가 발생했습니다. 관리자에게 문의해 주세요.")
-            raw_df = pd.DataFrame()
-
-        if raw_df.empty:
-            st.info("조회된 데이터가 없습니다.")
-            return
-
-        filtered_df = raw_df.copy()
-        st.caption("컬럼별 필터 (선택/입력하지 않으면 전체 표시)")
-        filter_cols = st.columns(4)
-        for i, col in enumerate(raw_df.columns):
-            target = filter_cols[i % 4]
-            series = raw_df[col]
-            widget_key = f"proc2_browse_filter_{table_label}_{col}"
-
-            with target:
-                if pd.api.types.is_datetime64_any_dtype(series):
-                    valid = series.dropna()
-                    if valid.empty:
-                        continue
-                    d_min, d_max = valid.min().date(), valid.max().date()
-                    if d_min == d_max:
-                        continue
-                    picked = st.date_input(str(col), value=(d_min, d_max),
-                                            min_value=d_min, max_value=d_max, key=widget_key)
-                    if isinstance(picked, (list, tuple)) and len(picked) == 2:
-                        lo, hi = picked
-                        filtered_df = filtered_df[
-                            series.dt.date.between(lo, hi) | series.isna()
-                        ]
-                elif pd.api.types.is_numeric_dtype(series):
-                    valid = series.dropna()
-                    if valid.empty:
-                        continue
-                    v_min, v_max = float(valid.min()), float(valid.max())
-                    if v_min == v_max:
-                        continue
-                    lo, hi = st.slider(str(col), min_value=v_min, max_value=v_max,
-                                        value=(v_min, v_max), key=widget_key)
-                    filtered_df = filtered_df[series.between(lo, hi) | series.isna()]
-                else:
-                    nunique = series.nunique(dropna=True)
-                    if nunique == 0:
-                        continue
-                    if nunique <= 40:
-                        options = sorted(series.dropna().astype(str).unique())
-                        selected = st.multiselect(str(col), options, default=[], key=widget_key)
-                        if selected:
-                            filtered_df = filtered_df[filtered_df[col].astype(str).isin(selected)]
-                    else:
-                        kw = st.text_input(f"{col} (포함 검색)", key=widget_key)
-                        if kw:
-                            filtered_df = filtered_df[
-                                filtered_df[col].astype(str).str.contains(kw, case=False, na=False, regex=False)
-                            ]
-
-        st.caption(f"총 {len(raw_df)}행 중 **{len(filtered_df)}행** 표시")
-        st.dataframe(filtered_df, use_container_width=True, height=420, hide_index=True)
-        st.download_button(
-            "⬇️ CSV 다운로드",
-            data=filtered_df.to_csv(index=False).encode("utf-8-sig"),
-            file_name="db_export.csv",
-            mime="text/csv",
-            key="proc2_browse_download",
-        )
+                st.caption(f"💡 현재 접속자 ID: `{current_user}` — 이 값을 사용자ID에 입력하면 현재 접속자에게 권한 부여")

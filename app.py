@@ -98,11 +98,7 @@ PROCESS_SUBMENUS = [
     ("proc_4", "전장 결선 자재 현황",    "🔌"),
 ]
 
-# 사곡 거주구 제작 현황(proc_2)의 관리자용 서브 기능(기준정보/공정회의록/간트차트)을
-# 한 화면에 탭으로 모아 제공하는 관리자 전용 페이지
-LAB_PAGE = ("proc_2_lab", "실험실", "🧪")
-
-SIDEBAR_PAGES = {"proc_2", "proc_3", "proc_4", "proc_2_lab"}
+SIDEBAR_PAGES = {"proc_2", "proc_3", "proc_4"}
 
 
 # ══════════════════════════════════════════════════════════
@@ -252,14 +248,6 @@ def render_navbar(current_url_path: str = ""):
             ' title="사이드바 토글" type="button">☰</button>'
         )
 
-    # 실험실 버튼 — 관리자 로그인 상태(is_admin)일 때만 노출
-    lab_html = ""
-    if st.session_state.get("is_admin"):
-        lab_html = (
-            f'<a href="/{LAB_PAGE[0]}" target="_self" class="lq-lab-btn">'
-            f'{LAB_PAGE[2]} {LAB_PAGE[1]}</a>'
-        )
-
     st.html(f"""
     <div class="navbar-wrap">
         <div style="display: flex; align-items: center; gap: 1.0rem;">
@@ -276,21 +264,10 @@ def render_navbar(current_url_path: str = ""):
         </div>
 
         <div style="display:flex; align-items:center; gap:1rem; margin-left:auto; border-left:1px solid rgba(255,255,255,0.1); padding-left:1.2rem; flex-shrink:0;">
-            {lab_html}
             <div id="lq-nav-date" style="color:#CBD5E1; font-size:0.9rem; font-weight:500; white-space:nowrap;"></div>
             <div id="lq-nav-time" style="font-size:1.5rem; font-weight:700; color:#38BDF8; font-family:'Consolas','Courier New',monospace; letter-spacing:0.05em; line-height:1; white-space:nowrap;"></div>
         </div>
     </div>
-    <style>
-    .lq-lab-btn {{
-        display:inline-flex; align-items:center; gap:0.3rem;
-        padding:0.35rem 0.9rem; border-radius:16px;
-        background:rgba(168,85,247,0.15); border:1px solid rgba(168,85,247,0.5);
-        color:#c084fc !important; font-size:0.82rem; font-weight:700;
-        white-space:nowrap; text-decoration:none; transition:all 0.2s;
-    }}
-    .lq-lab-btn:hover {{ background:rgba(168,85,247,0.28); border-color:rgba(168,85,247,0.8); }}
-    </style>
     """)
 
     # 클라이언트 측 시계 갱신 (서버 rerun 없음 — st.navigation race 회피)
@@ -795,12 +772,10 @@ def make_proc_page_func(key, name, icon):
 page_home_obj = st.Page(render_home, title="홈", url_path="home", default=True)
 
 proc_page_objs = [st.Page(make_proc_page_func(k, n, i), title=n, url_path=k) for k, n, i in PROCESS_SUBMENUS]
-lab_page_obj   = st.Page(make_proc_page_func(*LAB_PAGE), title=LAB_PAGE[1], url_path=LAB_PAGE[0])
 
 pages = {
     "메인": [page_home_obj],
     "공정 관리 상세": proc_page_objs,
-    "관리자 전용": [lab_page_obj],
 }
 
 pg = st.navigation(pages, position="sidebar")
