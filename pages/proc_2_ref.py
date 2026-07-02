@@ -254,6 +254,8 @@ def _tab_deck_order():
     col1, col2 = st.columns(2)
     for vtype, col in [("LNG", col1), ("CONT", col2)]:
         df = _load_safe(get_deck_order, default_deck_order_df, vtype)
+        # 표시 순서만 역순 정렬 (UPP-DK가 맨 아래) — order_no 값 자체(계산 로직용)는 변경하지 않음
+        df = df.sort_values("order_no", ascending=False)
         with col:
             st.markdown(f"**{vtype}**")
             st.dataframe(
